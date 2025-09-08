@@ -28,6 +28,7 @@ export default function HomePage() {
       }
     } catch (err) {
       setError("Error de conexión");
+      console.error(err);
     } finally {
       setLoading(false);
     }

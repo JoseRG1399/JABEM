@@ -14,3 +14,4 @@ dist
 
 # environment variables
 .env
+/app/generated/prisma
