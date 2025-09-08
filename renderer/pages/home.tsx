@@ -30,15 +30,27 @@ export default function HomePage() {
               />
             </div>
             <h1 className="text-2xl font-semibold tracking-tight text-[#F2F0EB]">
-              Bienvenido 
+              Bienvenido
             </h1>
             <p className="mt-1 text-sm text-[#F2F0EB]/70">Inicia sesión para continuar</p>
           </div>
 
           {/* Form */}
           <form className="px-8 pb-8" onSubmit={(e) => { e.preventDefault(); /* TODO: handle auth */ }}>
-            
+            {/* User */}
+            <label className="block text-sm font-medium text-[#F2F0EB]" htmlFor="email">
+              Usuario
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="text"
+              placeholder="Pecas"
+              required
+              className="mt-1 w-full rounded-xl bg-[#091B26]/40 text-[#F2F0EB] placeholder:text-[#F2F0EB]/40 border border-[#038C65]/30 focus:border-[#038C65] focus:ring-4 focus:ring-[#038C65]/20 outline-none px-4 py-3"
+            />
 
+            {/* Password */}
             <div className="mt-4">
               <label className="block text-sm font-medium text-[#F2F0EB]" htmlFor="password">
                 Ingresa tu clave para continuar
@@ -63,7 +75,7 @@ export default function HomePage() {
               </div>
             </div>
 
-           
+
 
             {/* Submit */}
             <button
