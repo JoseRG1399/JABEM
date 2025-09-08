@@ -5,6 +5,33 @@ import Link from "next/link";
 
 export default function HomePage() {
   const [showPassword, setShowPassword] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    const form = new FormData(e.currentTarget);
+    const usuario = String(form.get("email") || "").trim();
+    const password = String(form.get("password") || "").trim();
+    try {
+      const res = (await window.ipc.invoke("auth:login", { usuario, password })) as
+        | { ok: true; user: { id: number; nombre: string; usuario: string; rol: string } }
+        | { ok: false; error: string };
+      if (!res || ("ok" in res && !res.ok)) {
+        setError((res as any)?.error || "Error al iniciar sesión");
+      } else {
+        // TODO: guardar sesión/estado y navegar a la pantalla principal
+        // Por ahora, mostramos un alert con el nombre.
+        alert(`Bienvenido ${res.user.nombre}`);
+      }
+    } catch (err) {
+      setError("Error de conexión");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <React.Fragment>
@@ -36,7 +63,7 @@ export default function HomePage() {
           </div>
 
           {/* Form */}
-          <form className="px-8 pb-8" onSubmit={(e) => { e.preventDefault(); /* TODO: handle auth */ }}>
+          <form className="px-8 pb-8" onSubmit={onSubmit}>
             {/* User */}
             <label className="block text-sm font-medium text-[#F2F0EB]" htmlFor="email">
               Usuario
@@ -77,12 +104,17 @@ export default function HomePage() {
 
 
 
+            {error ? (
+              <p className="mt-4 text-sm text-red-400">{error}</p>
+            ) : null}
+
             {/* Submit */}
             <button
               type="submit"
-              className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#038C65] hover:bg-[#038C5A] text-[#F2F0EB] font-semibold px-4 py-3 shadow-lg shadow-black/30 focus:outline-none focus:ring-4 focus:ring-[#038C65]/30"
+              disabled={loading}
+              className="mt-6 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#038C65] hover:bg-[#038C5A] disabled:opacity-60 disabled:cursor-not-allowed text-[#F2F0EB] font-semibold px-4 py-3 shadow-lg shadow-black/30 focus:outline-none focus:ring-4 focus:ring-[#038C65]/30"
             >
-              Iniciar sesión
+              {loading ? "Ingresando..." : "Iniciar sesión"}
             </button>
 
             {/* Divider */}
