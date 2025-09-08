@@ -1,9 +1,10 @@
 import React from "react";
 import Head from "next/head";
 import Image from "next/image";
-import Link from "next/link";
+import { useRouter } from "next/router";
 
 export default function HomePage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -15,16 +16,19 @@ export default function HomePage() {
     const form = new FormData(e.currentTarget);
     const usuario = String(form.get("email") || "").trim();
     const password = String(form.get("password") || "").trim();
+
     try {
       const res = (await window.ipc.invoke("auth:login", { usuario, password })) as
         | { ok: true; user: { id: number; nombre: string; usuario: string; rol: string } }
         | { ok: false; error: string };
+
       if (!res || ("ok" in res && !res.ok)) {
         setError((res as any)?.error || "Error al iniciar sesión");
       } else {
-        // TODO: guardar sesión/estado y navegar a la pantalla principal
-        // Por ahora, mostramos un alert con el nombre.
-        alert(`Bienvenido ${res.user.nombre}`);
+        // ✅ Guardar sesión en localStorage
+        localStorage.setItem("jabem:user", JSON.stringify(res.user));
+        // ✅ Redirigir al dashboard
+        router.push("/dashboard");
       }
     } catch (err) {
       setError("Error de conexión");
@@ -103,8 +107,6 @@ export default function HomePage() {
               </div>
             </div>
 
-
-
             {error ? (
               <p className="mt-4 text-sm text-red-400">{error}</p>
             ) : null}
@@ -124,7 +126,6 @@ export default function HomePage() {
               <span className="text-xs uppercase tracking-widest text-[#F2F0EB]/50">o</span>
               <div className="h-px flex-1 bg-[#038C65]/20" />
             </div>
-
 
             {/* Footer */}
             <p className="mt-6 text-xs text-center text-[#F2F0EB]/50">
