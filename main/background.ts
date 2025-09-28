@@ -17,6 +17,7 @@ if (isProd) {
   const mainWindow = createWindow('main', {
     width: 1000,
     height: 600,
+     icon: path.join(__dirname, 'logo.png'), // ruta absoluta a tu icono
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
