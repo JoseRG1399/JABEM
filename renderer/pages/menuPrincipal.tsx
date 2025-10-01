@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Image from "next/image";
-import { ShoppingCart, Box, Users, BarChart, BookOpenCheck, CopyPlus, PackageOpen } from "lucide-react";
+import { ShoppingCart, Box, Users, BarChart, BookOpenCheck, CopyPlus, PackageOpen, Bolt } from "lucide-react";
 
 // Paleta
 const GREEN = "#038C65";
