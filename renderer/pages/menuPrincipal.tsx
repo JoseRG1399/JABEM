@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Image from "next/image";
-import { ShoppingCart, Box, Users, BarChart, BookOpenCheck, CopyPlus, PackageOpen } from "lucide-react";
+import { ShoppingCart, Box, Users, BarChart, BookOpenCheck, CopyPlus, PackageOpen, Bolt } from "lucide-react";
 
 // Paleta
 const GREEN = "#038C65";
@@ -16,6 +16,7 @@ const opciones = [
     { key: "reportes", label: "Reportes", icon: BarChart, path: "/reportes", roles: ["admin"] },
     { key: "usuarios", label: "Usuarios", icon: Users, path: "/usuarios", roles: ["admin"] },
     { key: "cortes", label: "Cortes", icon: BookOpenCheck, path: "/cortes", roles: ["admin", "vendedor"] },
+     { key: "configuracion", label: "Configuración", icon: Bolt, path: "/config", roles: ["admin", "vendedor"] },
 ];
 
 
