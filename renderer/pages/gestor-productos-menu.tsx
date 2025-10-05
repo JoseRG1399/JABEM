@@ -424,12 +424,13 @@ export default function GestorProductosMenuPage() {
                           {/* Botón activar/desactivar */}
                           <button
                             onClick={() => toggleEstadoPresentacion(presentacion.id)}
-                            className={`p-2 rounded hover:bg-opacity-80 ${
-                              presentacion.activo 
-                                ? 'text-red-600 hover:bg-red-100' 
-                                : 'text-green-600 hover:bg-green-100'
+                            className={`p-2 rounded ${
+                              presentacion.activo
+                                ? 'bg-[#C8E6C9] text-[#388E3C] hover:bg-[#A5D6A7]'
+                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                             }`}
                             title={presentacion.activo ? 'Desactivar' : 'Activar'}
+                            aria-pressed={presentacion.activo}
                           >
                             <Power className="h-4 w-4" />
                           </button>

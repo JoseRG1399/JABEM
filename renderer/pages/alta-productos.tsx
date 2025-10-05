@@ -45,6 +45,19 @@ export default function AltaProductosPage() {
     return `${base}${random}`;
   }
 
+  function showFieldHelp(field: string) {
+    const helps: Record<string, string> = {
+      nombre: 'Nombre principal del producto. Debe ser claro y único para identificar el artículo en listas y ventas.',
+      descripcion: 'Descripción breve del producto: ingredientes, presentación, o cualquier nota relevante.',
+      categoria: 'Categoría a la que pertenece el producto (ej: Bebidas, Granos). Facilita la organización y filtros.',
+      unidad_base: 'Unidad base usada para stock y ajustes (kg, bulto, pieza). Las presentaciones se convierten a esta unidad con el factor.',
+      stock_actual: 'Cantidad actual en inventario (en unidad base). Se actualizará con ventas y ajustes.',
+      stock_minimo: 'Nivel mínimo aconsejado; usado para alertas de reabastecimiento.',
+      codigo_barras: 'Código de barras generado por defecto;'
+    };
+    Swal.fire({ icon: 'info', title: 'Ayuda', text: helps[field] || '' });
+  }
+
 
   function handleInputtwo(e) {
     const { name, value } = e.target;
@@ -321,7 +334,7 @@ export default function AltaProductosPage() {
           <div className="bg-white rounded-xl shadow p-8">
             <form className="space-y-4" onSubmit={handleSubmit}>
               <label className="block text-sm font-medium text-[#038C65] mb-1" htmlFor="nombre">
-                Nombre
+                Nombre <button type="button" onClick={() => showFieldHelp('nombre')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
               </label>
               <input
                 id="nombre"
@@ -334,7 +347,7 @@ export default function AltaProductosPage() {
               />
 
               <label className="block text-sm font-medium text-[#038C65] mb-1" htmlFor="descripcion">
-                Descripción
+                Descripción <button type="button" onClick={() => showFieldHelp('descripcion')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
               </label>
               <textarea
                 id="descripcion"
@@ -347,7 +360,7 @@ export default function AltaProductosPage() {
               />
 
               <label className="block text-sm font-medium text-[#038C65] mb-1" htmlFor="categoria_id">
-                Categoría
+                Categoría <button type="button" onClick={() => showFieldHelp('categoria')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
               </label>
               <div className="flex gap-2">
                 <select
@@ -378,7 +391,7 @@ export default function AltaProductosPage() {
               </div>
 
               <label className="block text-sm font-medium text-[#038C65] mb-1" htmlFor="unidad_base">
-                Unidad base
+                Unidad base <button type="button" onClick={() => showFieldHelp('unidad_base')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
               </label>
               <select
                 id="unidad_base"
@@ -393,7 +406,7 @@ export default function AltaProductosPage() {
               </select>
 
               <label className="block text-sm font-medium text-[#038C65] mb-1" htmlFor="stock_actual">
-                Stock actual
+                Stock actual <button type="button" onClick={() => showFieldHelp('stock_actual')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
               </label>
               <input
                 id="stock_actual"
@@ -408,7 +421,7 @@ export default function AltaProductosPage() {
               />
 
               <label className="block text-sm font-medium text-[#038C65] mb-1" htmlFor="stock_minimo">
-                Stock mínimo
+                Stock mínimo <button type="button" onClick={() => showFieldHelp('stock_minimo')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
               </label>
               <input
                 id="stock_minimo"
@@ -426,7 +439,7 @@ export default function AltaProductosPage() {
                 className="block text-sm font-medium text-[#038C65] mb-1"
                 htmlFor="codigo_barras"
               >
-                Código de barras
+                Código de barras <button type="button" onClick={() => showFieldHelp('codigo_barras')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
               </label>
               <input
                 id="codigo_barras"
