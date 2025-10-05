@@ -106,10 +106,15 @@ export default function Ventas() {
   };
 
   const selectedProductData = productsList.find((p) => p.id === selectedProduct);
-  // Filtrar presentaciones para excluir "Kg suelto" ya que existe venta por tanto
-  const availablePresentations = selectedProductData?.presentaciones.filter(
-    (p) => p.nombre.toLowerCase() !== "kg suelto"
-  ) || [];
+  // Filtrar presentaciones para excluir "Kg suelto" solo si el producto tiene venta por peso disponible
+  const availablePresentations = selectedProductData?.presentaciones.filter((p) => {
+    // Para productos que NO son de unidad base "kg", mantener todas las presentaciones
+    if (selectedProductData.unidad_base !== "kg") {
+      return true;
+    }
+    // Para productos de unidad base "kg", excluir "kg suelto" solo si hay venta por peso
+    return p.nombre.toLowerCase() !== "kg suelto";
+  }) || [];
 
   // Filtrar productos según el término de búsqueda
   const filteredProducts = productsList.filter((producto) => {
@@ -123,10 +128,29 @@ export default function Ventas() {
   const selectProduct = (producto: Producto) => {
     setSelectedProduct(producto.id);
     setSearchTerm(`${producto.nombre} - ${producto.categoria?.nombre || ''}`);
-    setSelectedPresentation("");
     setShowDropdown(false);
     setSelectedIndex(-1);
+
+    // Si el producto NO es por kg y tiene una presentación llamada "pieza" (o similar), autoseleccionarla
+    try {
+      if (producto.unidad_base !== 'kg' && Array.isArray(producto.presentaciones)) {
+        const pieza = producto.presentaciones.find(p => p.nombre.toLowerCase() === 'pieza' || p.nombre.toLowerCase() === 'pza' || p.nombre.toLowerCase() === 'unidad');
+        if (pieza) {
+          setSelectedPresentation(pieza.id);
+          // Enfocar input de cantidad si existe
+          try { quantityInputRef?.current?.focus(); } catch (e) {}
+          return;
+        }
+      }
+      // Si no hay 'pieza', limpiar la presentación para que el usuario la elija
+      setSelectedPresentation("");
+    } catch (err) {
+      setSelectedPresentation("");
+    }
   };
+
+  // Ref para enfocar el input de cantidad
+  const quantityInputRef = useRef<HTMLInputElement | null>(null);
 
   // Manejar navegación con teclado
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -249,9 +273,16 @@ export default function Ventas() {
         },
       ]);
 
+      // Reset inputs so user can search another product immediately
       setPesoKg(0);
       setCantidadDinero(0);
       setSelectedProduct("");
+      setSearchTerm("");
+      setSelectedPresentation("");
+      setShowDropdown(false);
+      setSelectedIndex(-1);
+      // Desactivar venta por peso para la siguiente operación
+      setVentaPorPeso(false);
       return;
     }
 
@@ -262,9 +293,54 @@ export default function Ventas() {
     }
 
     const presentacion = producto?.presentaciones.find((pr) => pr.id === selectedPresentation);
-    if (!presentacion) return;
+    if (!presentacion) {
+      Swal.fire("Error", "No se encontró la presentación seleccionada", "error");
+      return;
+    }
 
-    const subtotal = Number(presentacion.precio_unitario) * quantity;
+    try {
+      // Debug: Verificar valores antes del cálculo
+      console.log("🔍 Datos de presentación:", {
+        producto: producto.nombre,
+        presentacion: presentacion.nombre,
+        precio_unitario: presentacion.precio_unitario,
+        tipo_precio: typeof presentacion.precio_unitario,
+        cantidad: quantity,
+        unidad: presentacion.unidad
+      });
+
+      const precioNumerico = validatePrice(presentacion.precio_unitario, `presentación ${presentacion.nombre}`);
+      const cantidadNumerica = Number(quantity);
+
+      if (isNaN(cantidadNumerica) || cantidadNumerica <= 0) {
+        Swal.fire("Error", "La cantidad no es válida", "error");
+        return;
+      }
+
+      const subtotal = precioNumerico * cantidadNumerica;
+
+      // Debug: Verificar cálculo
+      console.log("🧮 Cálculo exitoso:", {
+        precio: precioNumerico,
+        cantidad: cantidadNumerica,
+        subtotal: subtotal,
+        subtotal_formateado: formatCurrency(subtotal)
+      });
+      
+    } catch (error) {
+      Swal.fire({
+        icon: "error",
+        title: "Error en el precio",
+        html: `
+          <p>El precio de la presentación "${presentacion.nombre}" no es válido.</p>
+          <p class="text-sm text-gray-600 mt-2">Valor recibido: ${presentacion.precio_unitario}</p>
+          <p class="text-sm text-gray-600">Error: ${error.message}</p>
+        `,
+      });
+      return;
+    }
+
+    const subtotal = validatePrice(presentacion.precio_unitario, `presentación ${presentacion.nombre}`) * quantity;
 
     const existingIndex = cart.findIndex(
       (item) => item.presentacion.id === selectedPresentation && !item.esVentaPorPeso
@@ -289,10 +365,16 @@ export default function Ventas() {
     }
 
     // Reset form
+    // Reset inputs so user can search another product immediately
     setSelectedProduct("");
+    setSearchTerm("");
     setSelectedPresentation("");
     setQuantity(1);
     setCantidadDinero(0);
+    setShowDropdown(false);
+    setSelectedIndex(-1);
+    // Desactivar venta por peso para la siguiente operación
+    setVentaPorPeso(false);
   };
 
   const removeFromCart = (index: number) => {
@@ -301,15 +383,36 @@ export default function Ventas() {
 
   const updateQuantity = (index: number, delta: number) => {
     const newCart = [...cart];
-    const newQuantity = newCart[index].cantidad + delta;
+    const item = newCart[index];
+    const newQuantity = item.cantidad + delta;
 
     if (newQuantity <= 0) {
       removeFromCart(index);
       return;
     }
 
+    const precioUnitario = Number(item.presentacion.precio_unitario);
+    
+    // Validación de seguridad
+    if (isNaN(precioUnitario)) {
+      console.error("❌ Precio unitario inválido al actualizar cantidad:", item.presentacion.precio_unitario);
+      Swal.fire("Error", "Error al actualizar la cantidad. Precio inválido.", "error");
+      return;
+    }
+
     newCart[index].cantidad = newQuantity;
-    newCart[index].subtotal = newQuantity * Number(newCart[index].presentacion.precio_unitario);
+    newCart[index].subtotal = newQuantity * precioUnitario;
+    
+    // Debug
+    console.log("🔄 Cantidad actualizada:", {
+      producto: item.producto.nombre,
+      presentacion: item.presentacion.nombre,
+      cantidad_anterior: item.cantidad,
+      cantidad_nueva: newQuantity,
+      precio_unitario: precioUnitario,
+      subtotal_nuevo: newCart[index].subtotal
+    });
+    
     setCart(newCart);
   };
 
@@ -340,15 +443,17 @@ export default function Ventas() {
       title: "Confirmar Venta",
       html: `
         <div class="text-left">
-          <p class="mb-2"><strong>Subtotal:</strong> ${formatCurrency(calculateSubtotal())}</p>
-          ${descuentoPorcentaje > 0 ? `<p class="mb-2"><strong>Descuento (${descuentoPorcentaje}%):</strong> -${formatCurrency(calculateDescuento())}</p>` : ''}
-          <p class="mb-2 text-lg"><strong>Total:</strong> ${formatCurrency(calculateTotal())}</p>
-          <p class="mb-2"><strong>Método de Pago:</strong> Efectivo</p>
-          <p class="text-sm text-gray-600">¿Deseas procesar esta venta?</p>
+          ${descuentoPorcentaje > 0 ? `<p class="mb-2 text-center"><strong>Subtotal:</strong> ${formatCurrency(calculateSubtotal())}</p>` : ''}
+          ${descuentoPorcentaje > 0 ? `<p class="mb-2 text-center"><strong>Descuento (${descuentoPorcentaje}%):</strong> -${formatCurrency(calculateDescuento())}</p>` : ''}
+          <p class="mb-2 text-lg text-center"><strong>Total:</strong> ${formatCurrency(calculateTotal())}</p>
+          <p class="mb-2 text-center"><strong>Método de Pago:</strong> Efectivo</p>
+          <p class="text-normal text-gray-600 text-center">¿Deseas procesar esta venta?</p>
         </div>
       `,
       icon: "question",
+      iconColor: "#038C65",
       showCancelButton: true,
+      theme: "borderless",
       confirmButtonText: "Sí, procesar",
       cancelButtonText: "Cancelar",
       confirmButtonColor: "#038C65",
@@ -413,6 +518,23 @@ export default function Ventas() {
       style: "currency",
       currency: "MXN",
     }).format(amount);
+  };
+
+  // Función auxiliar para validar y convertir precios
+  const validatePrice = (price: any, context: string): number => {
+    const numericPrice = Number(price);
+    
+    if (isNaN(numericPrice)) {
+      console.error(`❌ Precio inválido en ${context}:`, price);
+      throw new Error(`Precio inválido: ${price}`);
+    }
+    
+    if (numericPrice < 0) {
+      console.error(`❌ Precio negativo en ${context}:`, price);
+      throw new Error(`El precio no puede ser negativo: ${price}`);
+    }
+    
+    return numericPrice;
   };
 
   return (
@@ -669,11 +791,20 @@ export default function Ventas() {
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#038C65] focus:border-[#038C65] transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="">Selecciona una presentación</option>
-                    {availablePresentations.map((presentacion) => (
-                      <option key={presentacion.id} value={presentacion.id}>
-                        {presentacion.nombre} - {formatCurrency(Number(presentacion.precio_unitario))}
-                      </option>
-                    ))}
+                    {availablePresentations.map((presentacion) => {
+                      const precio = Number(presentacion.precio_unitario);
+                      const precioValido = !isNaN(precio) && precio >= 0;
+                      
+                      return (
+                        <option key={presentacion.id} value={presentacion.id}>
+                          {presentacion.nombre} - {
+                            precioValido 
+                              ? formatCurrency(precio) 
+                              : `⚠️ Precio inválido (${presentacion.precio_unitario})`
+                          }
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
@@ -683,6 +814,7 @@ export default function Ventas() {
                     Cantidad
                   </label>
                   <input
+                    ref={quantityInputRef}
                     type="number"
                     min="1"
                     value={quantity}
