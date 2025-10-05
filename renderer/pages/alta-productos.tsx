@@ -21,6 +21,8 @@ export default function AltaProductosPage() {
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const ITEMS_POR_PAGINA = 20;
   const [tablaLoading, setTablaLoading] = useState(false);
   // Modal de presentaciones (React)
   const [presentacionModalOpen, setPresentacionModalOpen] = useState(false);
@@ -96,9 +98,13 @@ export default function AltaProductosPage() {
     return (p.nombre || '').toLowerCase().includes(busqueda.toLowerCase());
   });
 
+  const totalPaginas = Math.max(1, Math.ceil(productosFiltrados.length / ITEMS_POR_PAGINA));
+  const productosPagina = productosFiltrados.slice((pagina - 1) * ITEMS_POR_PAGINA, pagina * ITEMS_POR_PAGINA);
+
   function handleBusqueda(e) {
     const q = e.target.value;
     setBusqueda(q);
+    setPagina(1);
     // No re-fetch: filtramos en cliente usando el array 'productos'
   }
 
@@ -490,7 +496,7 @@ export default function AltaProductosPage() {
                       </td>
                     </tr>
                   ) : (
-                    productosFiltrados.map((prod) => (
+                    productosPagina.map((prod) => (
                       <tr key={prod.id} className="border-b">
                         <td className="px-3 py-2">{prod.nombre}</td>
                         <td className="px-3 py-2">{prod.categoria?.nombre || prod.categoria_id}</td>
@@ -521,6 +527,14 @@ export default function AltaProductosPage() {
                 </tbody>
               </table>
             </div>
+              {/* Paginación */}
+              <div className="mt-3 flex items-center justify-between">
+                <div className="text-sm text-gray-600">Página {pagina} de {totalPaginas} — {productosFiltrados.length} productos</div>
+                <div className="flex gap-2">
+                  <button disabled={pagina <= 1} onClick={() => setPagina(p => Math.max(1, p - 1))} className="px-3 py-1 rounded bg-gray-100">Anterior</button>
+                  <button disabled={pagina >= totalPaginas} onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))} className="px-3 py-1 rounded bg-gray-100">Siguiente</button>
+                </div>
+              </div>
           </div>
         </div>
 

@@ -12,10 +12,10 @@ const opciones = [
     { key: "ventas", label: "Ventas", icon: ShoppingCart, path: "/ventas", roles: ["admin", "vendedor"], highlight: true },
     { key: "gestor-productos", label: "Gestor de productos", icon: CopyPlus, path: "/gestor-productos-menu", roles: ["admin"] },
     { key: "inventario", label: "Inventario", icon: Box, path: "/inventario", roles: ["admin"] },
-    { key: "recepcion", label: "Recepción", icon: PackageOpen, path: "/recepcion", roles: ["admin"] },
+    //{ key: "recepcion", label: "Recepción", icon: PackageOpen, path: "/recepcion", roles: ["admin"] },
     { key: "reportes", label: "Reportes", icon: BarChart, path: "/reportes", roles: ["admin"] },
     { key: "usuarios", label: "Usuarios", icon: Users, path: "/usuarios", roles: ["admin"] },
-    { key: "cortes", label: "Cortes", icon: BookOpenCheck, path: "/cortes", roles: ["admin", "vendedor"] },
+   // { key: "cortes", label: "Cortes", icon: BookOpenCheck, path: "/cortes", roles: ["admin", "vendedor"] },
      { key: "configuracion", label: "Configuración", icon: Bolt, path: "/config", roles: ["admin", "vendedor"] },
 ];
 

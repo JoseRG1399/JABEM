@@ -27,6 +27,8 @@ export default function GestorProductosMenuPage() {
   const [presentaciones, setPresentaciones] = useState<Presentacion[]>([]);
   const [loading, setLoading] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const ITEMS_POR_PAGINA = 20;
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<Presentacion | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -74,6 +76,10 @@ export default function GestorProductosMenuPage() {
     presentacion.producto.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
     (presentacion.producto.categoria?.nombre || "").toLowerCase().includes(busqueda.toLowerCase())
   );
+
+  // Paginación en cliente
+  const totalPaginas = Math.max(1, Math.ceil(presentacionesFiltradas.length / ITEMS_POR_PAGINA));
+  const presentacionesPagina = presentacionesFiltradas.slice((pagina - 1) * ITEMS_POR_PAGINA, pagina * ITEMS_POR_PAGINA);
 
   // Función para activar/desactivar presentación
   async function toggleEstadoPresentacion(id: number) {
@@ -309,7 +315,7 @@ export default function GestorProductosMenuPage() {
             <input
               type="text"
               value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
+              onChange={(e) => { setBusqueda(e.target.value); setPagina(1); }}
               placeholder="Buscar por nombre de presentación, producto o categoría..."
               className="flex-1 rounded-xl border px-4 py-2 text-black bg-white"
             />
@@ -365,14 +371,14 @@ export default function GestorProductosMenuPage() {
                       Cargando presentaciones...
                     </td>
                   </tr>
-                ) : presentacionesFiltradas.length === 0 ? (
+                ) : presentacionesPagina.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                       {busqueda ? 'No se encontraron presentaciones que coincidan con la búsqueda' : 'No hay presentaciones registradas'}
                     </td>
                   </tr>
                 ) : (
-                  presentacionesFiltradas.map((presentacion) => (
+                  presentacionesPagina.map((presentacion) => (
                     <tr key={presentacion.id} className="border-b hover:bg-gray-50">
                       <td className="px-4 py-3">{presentacion.producto.nombre}</td>
                       <td className="px-4 py-3">
@@ -443,6 +449,14 @@ export default function GestorProductosMenuPage() {
                 )}
               </tbody>
             </table>
+          </div>
+          {/* Paginación */}
+          <div className="p-4 flex items-center justify-between">
+            <div className="text-sm text-gray-600">Página {pagina} de {totalPaginas} — {presentacionesFiltradas.length} presentaciones</div>
+            <div className="flex gap-2">
+              <button disabled={pagina <= 1} onClick={() => setPagina(p => Math.max(1, p - 1))} className="px-3 py-1 rounded bg-gray-100">Anterior</button>
+              <button disabled={pagina >= totalPaginas} onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))} className="px-3 py-1 rounded bg-gray-100">Siguiente</button>
+            </div>
           </div>
         </div>
       </div>
