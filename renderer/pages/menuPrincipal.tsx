@@ -10,7 +10,7 @@ const DARK = "#091B26";
 // Opciones (6 como en la imagen)
 const opciones = [
     { key: "ventas", label: "Ventas", icon: ShoppingCart, path: "/ventas", roles: ["admin", "vendedor"], highlight: true },
-    { key: "alta de productos", label: "Alta de productos", icon: CopyPlus, path: "/alta-productos", roles: ["admin"] },
+    { key: "gestor-productos", label: "Gestor de productos", icon: CopyPlus, path: "/gestor-productos-menu", roles: ["admin"] },
     { key: "inventario", label: "Inventario", icon: Box, path: "/inventario", roles: ["admin"] },
     { key: "recepcion", label: "Recepción", icon: PackageOpen, path: "/recepcion", roles: ["admin"] },
     { key: "reportes", label: "Reportes", icon: BarChart, path: "/reportes", roles: ["admin"] },
