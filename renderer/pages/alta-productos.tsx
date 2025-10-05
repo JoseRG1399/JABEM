@@ -64,9 +64,8 @@ export default function AltaProductosPage() {
   async function fetchProductos(nombre = "") {
     try {
       setTablaLoading(true);
-      let url = "/api/productRegister/productos-listar"; // tu endpoint existente
-      if (nombre) url += `?nombre=${encodeURIComponent(nombre)}`;
-      const res = await fetch(url);
+      // Llamamos al endpoint sin query y filtramos en cliente
+      const res = await fetch('/api/productRegister/productos-listar');
       const data = await res.json();
       setProductos(Array.isArray(data) ? data : []);
     } catch {
@@ -91,10 +90,16 @@ export default function AltaProductosPage() {
     fetchCategorias();
   }, []);
 
+  // Productos filtrados en cliente por la búsqueda (case-insensitive)
+  const productosFiltrados = productos.filter((p: any) => {
+    if (!busqueda) return true;
+    return (p.nombre || '').toLowerCase().includes(busqueda.toLowerCase());
+  });
+
   function handleBusqueda(e) {
     const q = e.target.value;
     setBusqueda(q);
-    fetchProductos(q);
+    // No re-fetch: filtramos en cliente usando el array 'productos'
   }
 
   async function eliminarProducto(id) {
@@ -296,10 +301,10 @@ export default function AltaProductosPage() {
   return (
     <div className="min-h-screen bg-[#091B26] p-6">
       <button
-        onClick={() => window.location.href = "/menuPrincipal"}
+        onClick={() => window.location.href = "/gestor-productos-menu"}
         className="mb-4 px-4 py-2 rounded-xl bg-[#038C65] text-white font-semibold shadow hover:bg-[#027857]"
       >
-        ← Volver al menú principal
+        ← Volver al gestor de productos
       </button>
       <div className="mx-auto max-w-7xl">
         <h1 className="text-2xl font-bold text-[#038C65] mb-6">Alta de productos</h1>
@@ -444,6 +449,7 @@ export default function AltaProductosPage() {
           {/* Columna derecha: Tabla */}
           <div className="bg-white rounded-xl shadow p-8">
             <h2 className="text-xl font-bold text-[#038C65] mb-4">Lista de productos</h2>
+            <p className="text-sm text-gray-600 mb-4">En esta sección podrás ver todos los productos registrados en el sistema y agregar presentaciones para venta.</p>
 
             <input
               type="text"
@@ -477,8 +483,14 @@ export default function AltaProductosPage() {
                         No hay productos
                       </td>
                     </tr>
+                  ) : productosFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="text-center py-4">
+                        {busqueda ? 'No se encontraron productos que coincidan con la búsqueda' : 'No hay productos'}
+                      </td>
+                    </tr>
                   ) : (
-                    productos.map((prod) => (
+                    productosFiltrados.map((prod) => (
                       <tr key={prod.id} className="border-b">
                         <td className="px-3 py-2">{prod.nombre}</td>
                         <td className="px-3 py-2">{prod.categoria?.nombre || prod.categoria_id}</td>
