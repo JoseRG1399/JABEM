@@ -22,6 +22,19 @@ export default function AltaProductosPage() {
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState("");
   const [tablaLoading, setTablaLoading] = useState(false);
+  // Modal de presentaciones (React)
+  const [presentacionModalOpen, setPresentacionModalOpen] = useState(false);
+  const [presentacionProductoId, setPresentacionProductoId] = useState<number | null>(null);
+  const [presentacionProductoInfo, setPresentacionProductoInfo] = useState<any>(null);
+  const [presentacionForm, setPresentacionForm] = useState({
+    nombre: "",
+    unidad: "kg",
+    factor_a_base: "",
+    precio_unitario: "",
+    codigo_barras: "",
+    es_default: false,
+  });
+  const [presentacionLoading, setPresentacionLoading] = useState(false);
 
   function generarCodigo(nombre) {
     if (!nombre) return "";
@@ -173,8 +186,8 @@ export default function AltaProductosPage() {
       confirmButtonText: "Guardar",
       cancelButtonText: "Cancelar",
       preConfirm: () => {
-        const nombre = document.getElementById("swal-cat-nombre")?.value?.trim();
-        const descripcion = document.getElementById("swal-cat-desc")?.value?.trim();
+        const nombre = (document.getElementById("swal-cat-nombre") as HTMLInputElement | null)?.value?.trim();
+        const descripcion = (document.getElementById("swal-cat-desc") as HTMLTextAreaElement | null)?.value?.trim();
         if (!nombre) {
           Swal.showValidationMessage("El nombre es obligatorio");
           return;
@@ -218,121 +231,65 @@ export default function AltaProductosPage() {
   }
 
   // === Modal de presentaciones ===
-  async function abrirModalPresentaciones(productoId) {
-    let prodId = Number(productoId) || 0;
-
-    // Traemos info del producto (opcional; solo para mostrar nombre)
-    let productoInfo = null;
-    if (prodId) {
-      try {
-        const res = await fetch(`/api/alta-productos/productos-detalle?id=${prodId}`);
-        if (res.ok) productoInfo = await res.json();
-      } catch { }
+  function abrirModalPresentaciones(productoId: number) {
+    const id = Number(productoId) || 0;
+    setPresentacionProductoId(id);
+    setPresentacionForm({ nombre: "", unidad: "kg", factor_a_base: "", precio_unitario: "", codigo_barras: "", es_default: false });
+    setPresentacionProductoInfo(null);
+    if (id) {
+      fetch(`/api/alta-productos/productos-detalle?id=${id}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((json) => setPresentacionProductoInfo(json))
+        .catch(() => setPresentacionProductoInfo(null));
     }
+    setPresentacionModalOpen(true);
+  }
 
-    let seguir = true;
+  function showPresentacionHelp(field: string) {
+    const infoMap: Record<string, string> = {
+      nombre: 'Nombre descriptivo de la presentación (ej: "Bulto 20kg"). Útil para identificar la presentación en ventas y listados.',
+      unidad: 'Unidad de medida de esta presentación. Afecta cómo se interpreta el factor a la unidad base.',
+      factor: 'Cuántas unidades base equivale esta presentación. Ej: si un bulto son 20 kg, el factor sería 20. si son piezas, poner 1.',
+      precio: 'Precio unitario de la presentación. Se usa como precio por defecto al vender con esta presentación.',
+      codigo: 'Código de barras opcional para la presentación. Útil para lector de códigos y búsqueda rápida.',
+      es_default: 'Si está marcado, esta presentación será la seleccionada por defecto al crear ventas o mostrar el producto.',
+    };
+    Swal.fire({ icon: 'info', title: 'Ayuda', text: infoMap[field] || '' });
+  }
 
-    while (seguir) {
-      const { value: formValues } = await Swal.fire({
-        title: `Nueva presentación ${productoInfo ? `para "${productoInfo.nombre}"` : ""}`,
-        html: `
-          <input id="p-nombre" class="swal2-input" placeholder="Nombre (ej: Bulto 20kg)">
-          <select id="p-unidad" class="swal2-input">
-            <option value="kg">Kilogramo</option>
-            <option value="bulto">Bulto</option>
-            <option value="pieza">Pieza</option>
-          </select>
-          <input id="p-factor" type="number" min="0.0001" step="0.0001" class="swal2-input" placeholder="Factor a base (ej: 20 si Bulto=20kg)">
-          <input id="p-precio" type="number" min="0" step="0.01" class="swal2-input" placeholder="Precio unitario">
-          <input id="p-codigo" class="swal2-input" placeholder="Código de barras (opcional)">
-          <label style="display:flex;gap:8px;align-items:center;justify-content:center;margin-top:4px;">
-            <input id="p-default" type="checkbox">
-            <span>Marcar como presentación por defecto</span>
-          </label>
-        `,
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: "Guardar presentación",
-        cancelButtonText: "Cancelar",
-        preConfirm: () => {
-          const nombre = document.getElementById("p-nombre")?.value?.trim();
-          const unidad = document.getElementById("p-unidad")?.value;
-          const factor = Number((document.getElementById("p-factor")?.value || "0").trim());
-          const precio = Number((document.getElementById("p-precio")?.value || "0").trim());
-          const codigo = document.getElementById("p-codigo")?.value?.trim();
-          const es_default = document.getElementById("p-default")?.checked;
+  async function submitPresentacion() {
+    // validations
+    const nombre = (presentacionForm.nombre || '').trim();
+    const unidad = presentacionForm.unidad;
+    const factor = Number(presentacionForm.factor_a_base || 0);
+    const precio = Number(presentacionForm.precio_unitario || 0);
+    if (!nombre) return Swal.fire('Error', 'El nombre es obligatorio', 'error');
+    if (!unidad) return Swal.fire('Error', 'La unidad es obligatoria', 'error');
+    if (!(factor > 0)) return Swal.fire('Error', 'El factor a base debe ser mayor que 0', 'error');
+    if (!(precio >= 0)) return Swal.fire('Error', 'El precio unitario debe ser 0 o mayor', 'error');
+    if (!presentacionProductoId) return Swal.fire('Error', 'Producto inválido', 'error');
 
-          if (!nombre) {
-            Swal.showValidationMessage("El nombre es obligatorio");
-            return;
-          }
-          if (!unidad) {
-            Swal.showValidationMessage("La unidad es obligatoria");
-            return;
-          }
-          if (!(factor > 0)) {
-            Swal.showValidationMessage("El factor a base debe ser mayor que 0");
-            return;
-          }
-          if (!(precio >= 0)) {
-            Swal.showValidationMessage("El precio unitario debe ser 0 o mayor");
-            return;
-          }
-
-          return {
-            nombre,
-            unidad,
-            factor_a_base: factor,
-            precio_unitario: precio,
-            codigo_barras: codigo || null,
-            es_default,
-          };
-        },
-      });
-
-      if (!formValues) break; // cancelado
-
-      try {
-        const res = await fetch("/api/alta-productos/presentaciones", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // batch por si luego quieres enviar varias
-          body: JSON.stringify([{ producto_id: prodId, ...formValues }]),
-        });
-
-        const ct = res.headers.get("content-type") || "";
-        const payload = ct.includes("application/json") ? await res.json() : { error: await res.text() };
-        if (!res.ok) throw new Error(payload?.error || `Error HTTP ${res.status}`);
-
-        await Swal.fire({
-          icon: "success",
-          title: "Presentación registrada",
-          text: `Se guardó "${formValues.nombre}" correctamente.`,
-        });
-
-        const resp = await Swal.fire({
-          icon: "question",
-          title: "¿Agregar otra presentación?",
-          showCancelButton: true,
-          confirmButtonText: "Sí",
-          cancelButtonText: "No",
-        });
-        seguir = resp.isConfirmed;
-      } catch (err) {
-        await Swal.fire({
-          icon: "error",
-          title: "Error",
-          text: err.message || "No se pudo crear la presentación",
-        });
-        const retry = await Swal.fire({
-          icon: "question",
-          title: "¿Intentar de nuevo?",
-          showCancelButton: true,
-          confirmButtonText: "Reintentar",
-          cancelButtonText: "Cancelar",
-        });
-        seguir = retry.isConfirmed;
+    setPresentacionLoading(true);
+    try {
+      const payloadBody = [{ producto_id: presentacionProductoId, nombre, unidad, factor_a_base: factor, precio_unitario: precio, codigo_barras: presentacionForm.codigo_barras || null, es_default: Boolean(presentacionForm.es_default) }];
+      const res = await fetch('/api/alta-productos/presentaciones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadBody) });
+      const ct = res.headers.get('content-type') || '';
+      const payload = ct.includes('application/json') ? await res.json() : { error: await res.text() };
+      if (!res.ok) throw new Error(payload?.error || `Error HTTP ${res.status}`);
+      await Swal.fire('Presentación registrada', `Se guardó "${nombre}" correctamente.`, 'success');
+      // preguntar si agregar otra
+      const resp = await Swal.fire({ icon: 'question', title: '¿Agregar otra presentación?', showCancelButton: true, confirmButtonText: 'Sí', cancelButtonText: 'No' });
+      if (resp.isConfirmed) {
+        // reset form for another
+        setPresentacionForm({ nombre: '', unidad: 'kg', factor_a_base: '', precio_unitario: '', codigo_barras: '', es_default: false });
+      } else {
+        setPresentacionModalOpen(false);
       }
+    } catch (err: any) {
+      await Swal.fire('Error', err?.message || 'No se pudo crear la presentación', 'error');
+    } finally {
+      setPresentacionLoading(false);
+      fetchProductos(busqueda);
     }
   }
 
@@ -554,8 +511,64 @@ export default function AltaProductosPage() {
             </div>
           </div>
         </div>
+
         {/* /grid */}
       </div>
+
+      {/* Modal React para presentaciones */}
+      {presentacionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-2xl bg-white rounded-xl shadow-lg p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-[#038C65]">Nueva presentación {presentacionProductoInfo ? `para "${presentacionProductoInfo.nombre}"` : ''}</h3>
+              <div className="flex gap-2">
+                <button className="px-3 py-1 rounded bg-gray-200" onClick={() => setPresentacionModalOpen(false)}>Cerrar</button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-medium">Nombre <button type="button" onClick={() => showPresentacionHelp('nombre')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 rounded">?</button></label>
+                <input value={presentacionForm.nombre} onChange={(e) => setPresentacionForm(prev => ({ ...prev, nombre: e.target.value }))} className="w-full rounded-xl border px-3 py-2" />
+              </div>
+              <div>
+                <label className="block font-medium">Unidad <button type="button" onClick={() => showPresentacionHelp('unidad')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 rounded">?</button></label>
+                <select value={presentacionForm.unidad} onChange={(e) => setPresentacionForm(prev => ({ ...prev, unidad: e.target.value }))} className="w-full rounded-xl border px-3 py-2">
+                  <option value="kg">Kilogramo</option>
+                  <option value="bulto">Bulto</option>
+                  <option value="pieza">Pieza</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-medium">Factor a base <button type="button" onClick={() => showPresentacionHelp('factor')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 rounded">?</button></label>
+                <input type="number" min="0.0001" step="0.0001" value={presentacionForm.factor_a_base} onChange={(e) => setPresentacionForm(prev => ({ ...prev, factor_a_base: e.target.value }))} className="w-full rounded-xl border px-3 py-2" />
+              </div>
+
+              <div>
+                <label className="block font-medium">Precio unitario <button type="button" onClick={() => showPresentacionHelp('precio')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 rounded">?</button></label>
+                <input type="number" min="0" step="0.01" value={presentacionForm.precio_unitario} onChange={(e) => setPresentacionForm(prev => ({ ...prev, precio_unitario: e.target.value }))} className="w-full rounded-xl border px-3 py-2" />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block font-medium">Código de barras <button type="button" onClick={() => showPresentacionHelp('codigo')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 rounded">?</button></label>
+                <input value={presentacionForm.codigo_barras} onChange={(e) => setPresentacionForm(prev => ({ ...prev, codigo_barras: e.target.value }))} className="w-full rounded-xl border px-3 py-2" />
+              </div>
+
+              <div className="md:col-span-2 flex items-center gap-3">
+                <input id="es_default" type="checkbox" checked={Boolean(presentacionForm.es_default)} onChange={(e) => setPresentacionForm(prev => ({ ...prev, es_default: e.target.checked }))} />
+                <label htmlFor="es_default" className="font-medium">Marcar como presentación por defecto <button type="button" onClick={() => showPresentacionHelp('es_default')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 rounded">?</button></label>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button disabled={presentacionLoading} onClick={() => setPresentacionModalOpen(false)} className="px-4 py-2 rounded-xl bg-gray-200">Cancelar</button>
+              <button disabled={presentacionLoading} onClick={submitPresentacion} className="px-4 py-2 rounded-xl bg-[#038C65] text-white">{presentacionLoading ? 'Guardando...' : 'Guardar presentación'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
