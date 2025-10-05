@@ -24,11 +24,11 @@ export default function VentasPage() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-white">Punto de Venta</h1>
           <button
-            onClick={() => router.push("/menuPrincipal")}
-            className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20"
-          >
-            Volver al Menúuuuu
-          </button>
+        onClick={() => (window.location.href = "/menuPrincipal")}
+        className="mb-4 px-4 py-2 rounded-xl bg-[#038C65] text-white font-semibold shadow hover:bg-[#027857]"
+      >
+        ← Volver al menú principal
+      </button>
         </div>
         <Ventas />
       </div>

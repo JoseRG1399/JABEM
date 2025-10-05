@@ -31,6 +31,13 @@ export default function InventarioPage() {
     return String(unsafe).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
+  // Formatea números a 3 decimales (si no es número válido devuelve '0.000')
+  function formatNumber(value: any) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0.000';
+    return n.toFixed(3);
+  }
+
   // Imprime un ticket de 80mm con listado de productos y sus stocks (arqueo)
   function imprimirArqueo() {
     try {
@@ -44,11 +51,12 @@ export default function InventarioPage() {
       const fecha = new Date().toLocaleString();
       const rows = lista.map((p: any) => {
         const nombre = escapeHtml(p.nombre || '');
-        const stock = escapeHtml(p.stock_actual ?? '0');
+        const stockRaw = p.stock_actual ?? 0;
+        const stock = escapeHtml(formatNumber(stockRaw));
         return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;"><div style="flex:1">${nombre}</div><div style="min-width:60px;text-align:right">${stock}</div></div>`;
       }).join('');
 
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>Arqueo</title><style>@page{size:80mm auto;margin:5mm}body{font-family:monospace;font-size:12px;width:80mm;padding:4mm;margin:0} .header{text-align:center;font-weight:700;margin-bottom:8px} .divider{border-top:1px dashed #000;margin:6px 0}</style></head><body><div class="header">JABEM - Arqueo de caja<br/><div style="font-weight:400;font-size:11px">${fecha}</div></div><div class="divider"></div>${rows}<div class="divider"></div><div style="text-align:center;margin-top:8px;font-size:11px">--- Fin del reporte ---</div></body></html>`;
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>Arqueo</title><style>@page{size:80mm auto;margin:5mm}body{font-family:monospace;font-size:12px;width:80mm;padding:4mm;margin:0} .header{text-align:center;font-weight:700;margin-bottom:8px} .divider{border-top:1px dashed #000;margin:6px 0}</style></head><body><div class="header">JABEM - Arqueo de stock<br/><div style="font-weight:400;font-size:11px">${fecha}</div></div><div class="divider"></div>${rows}<div class="divider"></div><div style="text-align:center;margin-top:8px;font-size:11px">--- Fin del reporte ---</div></body></html>`;
 
       const w = window.open('', '_blank', 'toolbar=0,location=0,menubar=0');
       if (!w) {
@@ -171,7 +179,7 @@ export default function InventarioPage() {
                 {productosPagina.map(p => (
                   <tr key={p.id} className="border-b hover:bg-gray-50">
                     <td className="px-3 py-2">{p.nombre}</td>
-                    <td className="px-3 py-2">{p.stock_actual}</td>
+                    <td className="px-3 py-2">{formatNumber(p.stock_actual ?? 0)}</td>
                     <td className="px-3 py-2">{p.unidad_base}</td>
                     <td className="px-3 py-2 flex gap-2">
                       <button onClick={() => abrirAjuste(p, 'entrada')} className="px-2 py-1 rounded bg-green-100 text-green-800 flex items-center gap-1"><ArrowUpCircle className="w-4 h-4"/> Entrada</button>
@@ -202,7 +210,7 @@ export default function InventarioPage() {
               <div key={m.id} className="border rounded p-3">
                 <div className="text-sm font-medium">{m.producto?.nombre || 'Producto'}</div>
                 <div className="text-xs text-gray-600">{new Date(m.fecha).toLocaleString()}</div>
-                <div className="text-sm">Tipo: {m.tipo_movimiento} - Cantidad: {m.cantidad_base}</div>
+                <div className="text-sm">Tipo: {m.tipo_movimiento} - Cantidad: {formatNumber(m.cantidad_base ?? 0)}</div>
                 {m.comentario && <div className="text-xs text-gray-700">{m.comentario}</div>}
               </div>
             ))}
