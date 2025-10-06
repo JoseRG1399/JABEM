@@ -1,11 +1,11 @@
 /** @type {import('next').NextConfig} */
-module.exports = {
-  distDir: process.env.NODE_ENV === 'production' ? '../app' : '.next',
+const nextConfig = {
+  output: 'export',
+  distDir: '../app',      // Exporta al app/ en la RAÍZ
+  images: { unoptimized: true },
   trailingSlash: true,
-  images: {
-    unoptimized: true,
-  },
-  webpack: (config) => {
-    return config
-  },
-}
+  reactStrictMode: true,
+  webpack: (config) => config,
+};
+
+module.exports = nextConfig;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import apiFetch from '../lib/api';
 import {
   Chart as ChartJS,
   BarElement,
@@ -49,10 +50,9 @@ export default function ReportesPage() {
   async function fetchVentasDia() {
     try {
       setLoading(true);
-      const res = await fetch("/api/reportes/ventas-dia");
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload.error || "Error al obtener ventas del día");
-      setData({ filas: Array.isArray(payload.filas) ? payload.filas : [] });
+      const res = await apiFetch('/api/reportes/ventas-dia');
+      if (!res.ok) throw new Error(res.error || 'Error al obtener ventas del día');
+      setData({ filas: Array.isArray(res.data?.filas) ? res.data?.filas : [] });
     } catch (err: any) {
       Swal.fire("Error", err?.message || "No se pudo obtener el reporte", "error");
     } finally {
@@ -66,12 +66,14 @@ export default function ReportesPage() {
 
   // moneda desde configuración (solo una vez)
   useEffect(() => {
-    fetch("/api/config/configuracion")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg) => {
-        if (cfg?.moneda) setCurrency(cfg.moneda);
-      })
-      .catch(() => {});
+    (async () => {
+      try {
+        const r = await apiFetch('/api/config/configuracion');
+        if (r.ok && r.data?.moneda) setCurrency(r.data.moneda);
+      } catch (e) {
+        // ignore
+      }
+    })();
   }, []);
 
   // --- derivaciones memoizadas ---
@@ -175,8 +177,8 @@ export default function ReportesPage() {
       // Intentar obtener datos de la empresa para el encabezado
       let empresa: any = null;
       try {
-        const r = await fetch('/api/config/configuracion');
-        if (r.ok) empresa = await r.json();
+        const r = await apiFetch('/api/config/configuracion');
+        if (r.ok) empresa = r.data;
       } catch (e) {
         empresa = null;
       }

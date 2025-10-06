@@ -1,11 +1,12 @@
 import { PrismaClient } from "@prisma/client";
+import path from "path";
+import { app } from "electron";
 
-const globalForPrisma = global as unknown as { prisma?: PrismaClient };
+const dbPath = path.join(app.getPath("userData"), "db", "jabem.db");
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ["warn", "error"], // agrega "query" si necesitas depurar
-  });
+export const prisma = new PrismaClient({
+  datasources: {
+    db: { url: `file:${dbPath}` },
+  },
+});
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

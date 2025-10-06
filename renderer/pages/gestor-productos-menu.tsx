@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import apiFetch from '../lib/api';
 import Swal from "sweetalert2";
 import { Edit, Power, Trash2, Eye, Plus } from "lucide-react";
 
@@ -49,15 +50,9 @@ export default function GestorProductosMenuPage() {
   async function fetchPresentaciones() {
     try {
       setLoading(true);
-      const response = await fetch('/api/gestion-productos/presentaciones-listar');
-      const data = await response.json();
-      
-      if (response.ok) {
-        setPresentaciones(Array.isArray(data) ? data : []);
-      } else {
-        console.error('Error al cargar presentaciones:', data.error);
-        setPresentaciones([]);
-      }
+      const response = await apiFetch('/api/gestion-productos/presentaciones-listar');
+      if (response.ok) setPresentaciones(Array.isArray(response.data) ? response.data : []);
+      else { console.error('Error al cargar presentaciones:', response.error); setPresentaciones([]); }
     } catch (error) {
       console.error('Error al cargar presentaciones:', error);
       setPresentaciones([]);
@@ -99,27 +94,23 @@ export default function GestorProductosMenuPage() {
     if (!confirmar.isConfirmed) return;
     
     try {
-      const response = await fetch('/api/gestion-productos/presentaciones-toggle', {
+      const response = await apiFetch('/api/gestion-productos/presentaciones-toggle', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })
       });
-      
-      const data = await response.json();
       
       if (response.ok) {
         await Swal.fire({
           icon: 'success',
           title: 'Estado actualizado',
-          text: data.message,
+          text: response.data?.message || 'Listo',
           timer: 2000,
           showConfirmButton: false
         });
         fetchPresentaciones();
       } else {
-        throw new Error(data.error || 'Error al cambiar estado');
+        throw new Error(response.error || 'Error al cambiar estado');
       }
     } catch (error) {
       await Swal.fire({
@@ -134,24 +125,24 @@ export default function GestorProductosMenuPage() {
   async function abrirModalEdicion(presentacionId: number) {
     try {
       setModalLoading(true);
-      const response = await fetch(`/api/gestion-productos/presentaciones-detalle?id=${presentacionId}`);
-      const data = await response.json();
+      const response = await apiFetch(`/api/gestion-productos/presentaciones-detalle?id=${presentacionId}`);
       
       if (response.ok) {
-        setModalData(data);
+        setModalData(response.data);
+        const d = response.data || {};
         setModalForm({
-          id: data.id,
-          nombre: data.nombre,
-          unidad: data.unidad,
-          factor_a_base: data.factor_a_base.toString(),
-          precio_unitario: data.precio_unitario.toString(),
-          codigo_barras: data.codigo_barras || "",
-          es_default: data.es_default,
-          activo: data.activo
+          id: d.id,
+          nombre: d.nombre,
+          unidad: d.unidad,
+          factor_a_base: (d.factor_a_base ?? '').toString(),
+          precio_unitario: (d.precio_unitario ?? '').toString(),
+          codigo_barras: d.codigo_barras || "",
+          es_default: d.es_default,
+          activo: d.activo
         });
         setModalOpen(true);
       } else {
-        throw new Error(data.error || 'Error al cargar presentación');
+        throw new Error(response.error || 'Error al cargar presentación');
       }
     } catch (error) {
       await Swal.fire({
@@ -186,11 +177,9 @@ export default function GestorProductosMenuPage() {
     
     try {
       setModalLoading(true);
-      const response = await fetch('/api/gestion-productos/presentaciones-editar', {
+      const response = await apiFetch('/api/gestion-productos/presentaciones-editar', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: modalForm.id,
           nombre: modalForm.nombre.trim(),
@@ -202,20 +191,18 @@ export default function GestorProductosMenuPage() {
         })
       });
       
-      const data = await response.json();
-      
       if (response.ok) {
         await Swal.fire({
           icon: 'success',
           title: 'Presentación actualizada',
-          text: data.message,
+          text: response.data?.message || 'Listo',
           timer: 2000,
           showConfirmButton: false
         });
         setModalOpen(false);
         fetchPresentaciones();
       } else {
-        throw new Error(data.error || 'Error al actualizar presentación');
+        throw new Error(response.error || 'Error al actualizar presentación');
       }
     } catch (error) {
       await Swal.fire({
@@ -246,27 +233,23 @@ export default function GestorProductosMenuPage() {
     if (!confirmar.isConfirmed) return;
     
     try {
-      const response = await fetch('/api/gestion-productos/presentaciones-eliminar', {
+      const response = await apiFetch('/api/gestion-productos/presentaciones-eliminar', {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })
       });
-      
-      const data = await response.json();
       
       if (response.ok) {
         await Swal.fire({
           icon: 'success',
           title: 'Presentación eliminada',
-          text: data.message,
+          text: response.data?.message || 'Listo',
           timer: 2000,
           showConfirmButton: false
         });
         fetchPresentaciones();
       } else {
-        throw new Error(data.error || 'Error al eliminar presentación');
+        throw new Error(response.error || 'Error al eliminar presentación');
       }
     } catch (error) {
       await Swal.fire({

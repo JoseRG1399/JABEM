@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import apiFetch from '../lib/api';
 import Swal from 'sweetalert2';
 import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 
@@ -15,9 +16,8 @@ export default function InventarioPage() {
   async function fetchProductos() {
     try {
       setLoading(true);
-      const res = await fetch('/api/inventario/productos-listar');
-      const data = await res.json();
-      setProductos(Array.isArray(data) ? data : []);
+      const res = await apiFetch('/api/inventario/productos-listar');
+      setProductos(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setProductos([]);
     } finally {
@@ -78,9 +78,8 @@ export default function InventarioPage() {
   async function fetchMovimientos(productoId?: number) {
     try {
       const url = productoId ? `/api/inventario/movimientos-listar?producto_id=${productoId}` : '/api/inventario/movimientos-listar';
-      const res = await fetch(url);
-      const data = await res.json();
-      setMovimientos(Array.isArray(data) ? data : []);
+      const res = await apiFetch(url);
+      setMovimientos(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setMovimientos([]);
     }
@@ -89,10 +88,9 @@ export default function InventarioPage() {
   // Mostrar ultimos movimientos de un producto en un Swal
   async function verMovimientosProducto(productoId: number) {
     try {
-      const res = await fetch(`/api/inventario/movimientos-listar?producto_id=${productoId}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al obtener movimientos');
-      const lista = Array.isArray(data) ? data : [];
+  const res = await apiFetch(`/api/inventario/movimientos-listar?producto_id=${productoId}`);
+  if (!res.ok) throw new Error(res.error || 'Error al obtener movimientos');
+  const lista = Array.isArray(res.data) ? res.data : [];
       const html = lista.slice(0, 50).map((m: any) => `
         <div style="border-bottom:1px solid #eee;padding:6px 0;">
           <div style="font-weight:600">${m.producto?.nombre || ''} — ${m.tipo_movimiento}</div>
@@ -137,13 +135,12 @@ export default function InventarioPage() {
       if (!result.isConfirmed) return;
       const { cantidad, comentario } = result.value || {};
       try {
-        const res = await fetch('/api/inventario/ajustar-stock', {
+        const res = await apiFetch('/api/inventario/ajustar-stock', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ producto_id: producto.id, cantidad, tipo, razon: comentario })
         });
-        const payload = await res.json();
-        if (!res.ok) throw new Error(payload.error || 'Error al ajustar stock');
+        if (!res.ok) throw new Error(res.error || 'Error al ajustar stock');
         Swal.fire('Listo', 'Stock actualizado', 'success');
         fetchProductos(); fetchMovimientos(producto.id);
       } catch (err: any) {

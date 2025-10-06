@@ -12,17 +12,7 @@ next-env.d.ts
 /app
 dist
 
-# database files
-main/db/
-prisma/main/db/
-*.db
-*.sqlite
-*.sqlite3
 
-# prisma migrations (keep schema but ignore generated migrations)
-main/db/migrations/
-prisma/migrations/
-migration_lock.toml
 
 
 # environment variables

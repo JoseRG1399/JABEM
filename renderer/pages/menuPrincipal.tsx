@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import apiFetch from "../lib/api";
 import { useRouter } from "next/router";
 import Image from "next/image";
+import Swal from 'sweetalert2';
 import { ShoppingCart, Box, Users, BarChart, BookOpenCheck, CopyPlus, PackageOpen, Bolt } from "lucide-react";
 
 // Paleta
@@ -33,10 +35,15 @@ export default function MenuPrincipal() {
         if (stored) setUser(JSON.parse(stored));
         else router.push("/login");
         // Obtener datos de la tienda
-        fetch("/api/auth/store")
-            .then(res => res.json())
-            .then(data => setStore(data))
-            .catch(() => setStore(null));
+        (async () => {
+            try {
+                const resp = await apiFetch('/api/auth/store');
+                if (resp.ok) setStore(resp.data);
+                else setStore(null);
+            } catch (e) {
+                setStore(null);
+            }
+        })();
     }, [router]);
 
     function handleLogout() {
@@ -61,6 +68,14 @@ export default function MenuPrincipal() {
                     height={100}
                     className="mx-auto rounded-lg"
                     priority
+                    onDoubleClick={() => {
+                        Swal.fire({
+                            title: 'Créditos',
+                            html: '<strong>José Ríos</strong> y <strong>Andrés Díaz</strong><br/>Equipo de desarrollo de Jabem software',
+                            icon: 'info',
+                            confirmButtonText: 'OK'
+                        });
+                    }}
                 />
                 <div className="flex flex-row w-3/4 mr-10 bg-white rounded-full border items-center justify-center">
                     <div className="flex-grow">

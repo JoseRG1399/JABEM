@@ -1,19 +1,65 @@
 {
   "private": true,
-  "name": "my-nextron-app",
+  "name": "jabem",
   "description": "My application description",
   "version": "1.0.0",
-  "author": "Yoshihide Shiono <shiono.yoshihide@gmail.com>",
+  "author": "Jabem Team <riosgil.3099@gmail.com> (https://github.com/joshdev)",
   "main": "app/background.js",
-  "scripts": {
-    "dev": "nextron",
-    "build": "nextron build",
-    "postinstall": "electron-builder install-app-deps",
-    "db:generate": "prisma generate --schema=./main/db/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema=./main/db/schema.prisma",
-    "db:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio --schema=./main/db/schema.prisma",
-    "db:seed": "ts-node ./main/db/seed.ts"
+ "scripts": {
+  "dev": "nextron",
+  "prebuild:win": "node ./scripts/make-seed.js",
+  "build:win": "nextron build --win nsis",
+  "build": "nextron build",
+  "pack": "nextron build --dir",
+  "postinstall": "prisma generate --schema=./main/db/schema.prisma && electron-builder install-app-deps",
+  "db:generate": "prisma generate --schema=./main/db/schema.prisma",
+  "db:migrate": "prisma migrate dev --schema=./main/db/schema.prisma",
+  "db:deploy": "prisma migrate deploy --schema=./main/db/schema.prisma",
+  "db:studio": "prisma studio --schema=./main/db/schema.prisma",
+  "db:seed": "ts-node ./main/db/seed.ts"
+}
+,
+  "build": {
+    "appId": "com.jabem.happypet",
+    "productName": "JABEM POS",
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources"
+    },
+    "files": [
+      "app/**/*",
+      "background.js",
+      "preload.js",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/.prisma/**",
+      "node_modules/@prisma/client/**",
+      "node_modules/.prisma/client/*query_engine*.node",
+      "**/*.node"
+    ],
+    "extraResources": [
+      { "from": "main/db/jabem.dev.db", "to": "db-seed/jabem.dev.db" },
+      { "from": "main/db/migrations", "to": "db/migrations" }
+      ,
+      { "from": "node_modules/.prisma", "to": "node_modules/.prisma" },
+      { "from": "node_modules/@prisma", "to": "node_modules/@prisma" }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "resources/icon.ico",
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JABEM POS"
+    },
+    "publish": null
   },
   "dependencies": {
     "@prisma/client": "^6.16.3",
@@ -31,11 +77,11 @@
     "@types/react": "^18.2.52",
     "autoprefixer": "^10.4.19",
     "electron": "^34.0.0",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^24.0.0",
     "next": "^14.2.4",
     "nextron": "^9.5.0",
     "postcss": "^8.4.38",
-    "prisma": "^6.15.0",
+    "prisma": "^6.16.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.3",

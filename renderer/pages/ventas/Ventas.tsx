@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import Ticket from "./Ticket";
+import apiFetch from "../../lib/api";
+import Ticket from "../../components/Ticket";
 import Swal from "sweetalert2";
 import { ShoppingCart, Trash2, Plus, Minus, DollarSign, Percent, Weight, Package, Search } from "lucide-react";
 
@@ -82,10 +83,11 @@ export default function Ventas() {
 
   const loadProducts = async () => {
     try {
-      const response = await fetch("/api/sales/productos");
-      if (response.ok) {
-        const data = await response.json();
-        setProductsList(data);
+      const resp = await apiFetch<Producto[]>("/api/sales/productos");
+      if (resp.ok) {
+        setProductsList(resp.data || []);
+      } else {
+        throw new Error(resp.error || "Error cargando productos");
       }
     } catch (error) {
       console.error("Error loading products:", error);
@@ -95,10 +97,11 @@ export default function Ventas() {
 
   const loadEmpresa = async () => {
     try {
-      const response = await fetch("/api/config/configuracion");
-      if (response.ok) {
-        const data = await response.json();
-        setEmpresa(data);
+      const resp = await apiFetch<any>("/api/config/configuracion");
+      if (resp.ok) {
+        setEmpresa(resp.data);
+      } else {
+        console.warn("No se pudo cargar la configuración de la empresa:", resp.error);
       }
     } catch (error) {
       console.error("Error loading empresa:", error);
@@ -474,20 +477,17 @@ export default function Ventas() {
         })),
       };
 
-      const response = await fetch("/api/sales", {
+      const resp = await apiFetch<any>("/api/sales", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(saleData),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Error al procesar la venta");
+      if (!resp.ok) {
+        throw new Error(resp.error || "Error al procesar la venta");
       }
 
-      const sale = await response.json();
+      const sale = resp.data;
       setLastSale(sale);
       setCart([]);
       setDescuentoPorcentaje(0);
