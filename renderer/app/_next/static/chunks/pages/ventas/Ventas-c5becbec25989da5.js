@@ -1,0 +1,1 @@
+(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[801],{4738:function(n,_,u){(window.__NEXT_P=window.__NEXT_P||[]).push(["/ventas/Ventas",function(){return u(6814)}])}},function(n){n.O(0,[398,590,814,888,774,179],function(){return n(n.s=4738)}),_N_E=n.O()}]);

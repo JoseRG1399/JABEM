@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
+import apiFetch from '../../lib/api';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, ChartOptions } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
 import Swal from 'sweetalert2';
@@ -41,10 +42,9 @@ export default function HistoricoPage() {
     if (!start || !end) return Swal.fire('Error', 'Selecciona rango de fechas', 'error');
     try {
       setLoading(true);
-      const res = await fetch(`/api/reportes/ventas-historico?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload.error || 'Error al obtener histórico');
-      setData({ byDay: payload.byDay ?? [], byProduct: payload.byProduct ?? [] });
+      const res = await apiFetch(`/api/reportes/ventas-historico?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      if (!res.ok) throw new Error(res.error || 'Error al obtener histórico');
+      setData({ byDay: res.data?.byDay ?? [], byProduct: res.data?.byProduct ?? [] });
     } catch (err: any) {
       Swal.fire('Error', err?.message || 'No se pudo obtener histórico', 'error');
     } finally {
@@ -55,10 +55,9 @@ export default function HistoricoPage() {
   async function fetchHistoricoRange(startStr: string, endStr: string) {
     try {
       setLoading(true);
-      const res = await fetch(`/api/reportes/ventas-historico?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`);
-      const payload = await res.json();
-      if (!res.ok) throw new Error(payload.error || 'Error al obtener histórico');
-      setData({ byDay: payload.byDay ?? [], byProduct: payload.byProduct ?? [] });
+      const res = await apiFetch(`/api/reportes/ventas-historico?start=${encodeURIComponent(startStr)}&end=${encodeURIComponent(endStr)}`);
+      if (!res.ok) throw new Error(res.error || 'Error al obtener histórico');
+      setData({ byDay: res.data?.byDay ?? [], byProduct: res.data?.byProduct ?? [] });
       setStart(startStr); setEnd(endStr);
     } catch (err: any) {
       Swal.fire('Error', err?.message || 'No se pudo obtener histórico', 'error');
@@ -91,11 +90,8 @@ export default function HistoricoPage() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/config/configuracion');
-        if (r.ok) {
-          const cfg = await r.json();
-          if (cfg?.moneda) setCurrency(cfg.moneda);
-        }
+        const r = await apiFetch('/api/config/configuracion');
+        if (r.ok && r.data && r.data.moneda) setCurrency(r.data.moneda);
       } catch {}
     })();
   }, []);

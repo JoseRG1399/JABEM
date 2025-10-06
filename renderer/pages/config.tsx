@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import apiFetch from "../lib/api";
 import Swal from "sweetalert2";
 import { useRouter } from "next/router";
 
@@ -17,16 +18,16 @@ export default function ConfiguracionPage() {
 	const [success, setSuccess] = useState<string | null>(null);
 
 	useEffect(() => {
-		fetch("/api/config/configuracion")
-			.then(res => res.json())
-			.then(data => {
-				if (data && !data.error) setForm(data);
+		(async () => {
+			try {
+				const resp = await apiFetch('/api/config/configuracion');
+				if (resp.ok && resp.data) setForm(resp.data);
+			} catch (e) {
+				setError('Error al cargar configuración');
+			} finally {
 				setLoading(false);
-			})
-			.catch(() => {
-				setError("Error al cargar configuración");
-				setLoading(false);
-			});
+			}
+		})();
 	}, []);
 
 	function handleInput(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
@@ -37,24 +38,27 @@ export default function ConfiguracionPage() {
 		e.preventDefault();
 		setError(null);
 		setSuccess(null);
-		const res = await fetch("/api/config/configuracion", {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(form),
-		});
-		const data = await res.json();
-			if (!res.ok) {
-				setError(data.error || "Error al actualizar");
+		try {
+			const resp = await apiFetch('/api/config/configuracion', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(form),
+			});
+			if (!resp.ok) {
+				setError(resp.error || 'Error al actualizar');
 			} else {
 				Swal.fire({
-					title: "¡Guardado!",
-					text: "La configuración ha sido actualizada.",
-					icon: "success",
-					confirmButtonText: "OK",
+					title: '¡Guardado!',
+					text: 'La configuración ha sido actualizada.',
+					icon: 'success',
+					confirmButtonText: 'OK',
 				}).then(() => {
-					router.push("/menuPrincipal");
+					router.push('/menuPrincipal');
 				});
 			}
+		} catch (e) {
+			setError('Error al actualizar');
+		}
 	}
 
 		return (

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { apiCall } from "../lib/api";
 
 // Tipos (ajusta si tu API devuelve otros campos)
 interface Usuario {
@@ -28,7 +29,6 @@ export default function UsuariosPage() {
     const [filterRol, setFilterRol] = useState<string>("todos");
     const [page, setPage] = useState(1);
     const pageSize = 8;
-
     useEffect(() => {
         cargarUsuarios();
     }, []);
@@ -37,8 +37,7 @@ export default function UsuariosPage() {
         try {
             setLoading(true);
             setError(null);
-            const res = await fetch("/api/usuarios/listar");
-            const data = await res.json();
+            const data = await apiCall<Usuario[]>("/api/usuarios/listar", { method: "GET" });
             setUsuarios(data || []);
         } catch (e) {
             setError("Error al cargar usuarios");
@@ -56,13 +55,7 @@ export default function UsuariosPage() {
         setFormError(null);
         setCreating(true);
         try {
-            const res = await fetch("/api/usuarios/crear", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(form),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data?.error || "Error al crear usuario");
+            await apiCall("/api/usuarios/crear", { method: "POST", body: form });
 
             setForm({ nombre: "", usuario: "", password: "", rol: "vendedor" });
             await cargarUsuarios();
@@ -85,12 +78,7 @@ export default function UsuariosPage() {
         setUsuarios((prev) => prev.filter((x) => x.id !== id));
 
         try {
-            const res = await fetch("/api/usuarios/eliminar", {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id }),
-            });
-            if (!res.ok) throw new Error("No se pudo eliminar");
+            await apiCall("/api/usuarios/eliminar", { method: "DELETE", body: { id } });
         } catch (e) {
             // revertir si falla
             setUsuarios(backup);

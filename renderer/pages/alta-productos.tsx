@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import apiFetch from '../lib/api';
 import Swal from "sweetalert2";
 import { PlusCircle, Trash2 } from "lucide-react";
 
@@ -79,10 +80,9 @@ export default function AltaProductosPage() {
   async function fetchProductos(nombre = "") {
     try {
       setTablaLoading(true);
-      // Llamamos al endpoint sin query y filtramos en cliente
-      const res = await fetch('/api/productRegister/productos-listar');
-      const data = await res.json();
-      setProductos(Array.isArray(data) ? data : []);
+        // Llamamos al endpoint sin query y filtramos en cliente
+        const res = await apiFetch('/api/productRegister/productos-listar');
+        setProductos(Array.isArray(res.data) ? res.data : []);
     } catch {
       setProductos([]);
     } finally {
@@ -92,9 +92,8 @@ export default function AltaProductosPage() {
 
   async function fetchCategorias() {
     try {
-      const res = await fetch("/api/productRegister/categorias-listar"); // opcional; usa el tuyo si es distinto
-      const data = await res.json();
-      setCategorias(Array.isArray(data) ? data : []);
+      const res = await apiFetch('/api/productRegister/categorias-listar'); // opcional; usa el tuyo si es distinto
+      setCategorias(Array.isArray(res.data) ? res.data : []);
     } catch {
       setCategorias([]);
     }
@@ -132,21 +131,12 @@ export default function AltaProductosPage() {
     });
     if (!confirm.isConfirmed) return;
 
-    const res = await fetch("/api/productRegister/productos-eliminar", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
+    const res = await apiFetch('/api/productRegister/productos-eliminar', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
     if (res.ok) {
       Swal.fire("Eliminado", "El producto ha sido eliminado.", "success");
       fetchProductos(busqueda);
     } else {
-      const data = await res.json().catch(() => ({}));
-      Swal.fire({
-        title: "Error",
-        text: data.error || "No se pudo eliminar el producto.",
-        icon: "error",
-      });
+      Swal.fire({ title: 'Error', text: res.error || 'No se pudo eliminar el producto.', icon: 'error' });
     }
   }
 
@@ -159,15 +149,8 @@ export default function AltaProductosPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/productRegister/productos-alta", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-
-      const ct = res.headers.get("content-type") || "";
-      const data = ct.includes("application/json") ? await res.json() : { error: await res.text() };
-      if (!res.ok) throw new Error(data?.error || "Error al registrar producto");
+      const res = await apiFetch('/api/productRegister/productos-alta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      if (!res.ok) throw new Error(res.error || 'Error al registrar producto');
 
       await Swal.fire({
         title: "¡Producto registrado!",
@@ -189,7 +172,7 @@ export default function AltaProductosPage() {
       fetchProductos(busqueda);
 
       // Abrimos modal para crear presentaciones del nuevo producto:
-      await abrirModalPresentaciones(data.id);
+  await abrirModalPresentaciones((res.data as any)?.id);
     } catch (err) {
       setError(err.message || "Error al registrar producto");
     } finally {
@@ -223,28 +206,12 @@ export default function AltaProductosPage() {
     if (!formValues) return; // cancelado
 
     try {
-      const res = await fetch("/api/alta-productos/categorias-alta", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formValues),
-      });
-
-      const contentType = res.headers.get("content-type") || "";
-      const payload = contentType.includes("application/json")
-        ? await res.json()
-        : { error: await res.text() };
-
-      if (!res.ok) throw new Error(payload?.error || `Error HTTP ${res.status}`);
-
+      const res = await apiFetch('/api/alta-productos/categorias-alta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formValues) });
+      if (!res.ok) throw new Error(res.error || `Error creando categoría`);
       // refrescamos y seleccionamos la nueva categoría
       await fetchCategorias();
-      setForm((prev) => ({ ...prev, categoria_id: String(payload.id) }));
-
-      Swal.fire({
-        icon: "success",
-        title: "Categoría creada",
-        text: `Se creó "${payload.nombre}" correctamente.`,
-      });
+      setForm((prev) => ({ ...prev, categoria_id: String((res.data as any)?.id) }));
+      Swal.fire({ icon: 'success', title: 'Categoría creada', text: `Se creó "${(res.data as any)?.nombre}" correctamente.` });
     } catch (err) {
       Swal.fire({
         icon: "error",
@@ -260,9 +227,9 @@ export default function AltaProductosPage() {
     setPresentacionProductoId(id);
     setPresentacionForm({ nombre: "", unidad: "kg", factor_a_base: "", precio_unitario: "", codigo_barras: "", es_default: false });
     setPresentacionProductoInfo(null);
-    if (id) {
-      fetch(`/api/alta-productos/productos-detalle?id=${id}`)
-        .then((r) => r.ok ? r.json() : null)
+      if (id) {
+      apiFetch(`/api/alta-productos/productos-detalle?id=${id}`)
+        .then((r) => r.ok ? r.data : null)
         .then((json) => setPresentacionProductoInfo(json))
         .catch(() => setPresentacionProductoInfo(null));
     }
@@ -296,10 +263,8 @@ export default function AltaProductosPage() {
     setPresentacionLoading(true);
     try {
       const payloadBody = [{ producto_id: presentacionProductoId, nombre, unidad, factor_a_base: factor, precio_unitario: precio, codigo_barras: presentacionForm.codigo_barras || null, es_default: Boolean(presentacionForm.es_default) }];
-      const res = await fetch('/api/alta-productos/presentaciones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadBody) });
-      const ct = res.headers.get('content-type') || '';
-      const payload = ct.includes('application/json') ? await res.json() : { error: await res.text() };
-      if (!res.ok) throw new Error(payload?.error || `Error HTTP ${res.status}`);
+  const res = await apiFetch('/api/alta-productos/presentaciones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payloadBody) });
+  if (!res.ok) throw new Error(res.error || 'Error al crear presentaciones');
       await Swal.fire('Presentación registrada', `Se guardó "${nombre}" correctamente.`, 'success');
       // preguntar si agregar otra
       const resp = await Swal.fire({ icon: 'question', title: '¿Agregar otra presentación?', showCancelButton: true, confirmButtonText: 'Sí', cancelButtonText: 'No' });

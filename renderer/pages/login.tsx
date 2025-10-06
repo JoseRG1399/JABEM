@@ -17,20 +17,36 @@ export default function HomePage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Error de autenticación");
+      const isElectron = typeof (window as any).ipc?.invoke === "function";
+      if (isElectron) {
+        // Producción en Electron: usar IPC (ya expuesto por preload)
+        const resp = (await (window as any).ipc.invoke(
+          "auth:login",
+          { usuario, password }
+        )) as { ok: boolean; data?: any; error?: string };
+        if (!resp?.ok) {
+          setError(resp?.error || "Error de autenticación");
+        } else {
+          setError(null);
+          window.localStorage.setItem("jabemUser", JSON.stringify(resp.data));
+          router.push("/menuPrincipal");
+        }
       } else {
-        setError(null);
-        // Guardar usuario en localStorage
-        window.localStorage.setItem("jabemUser", JSON.stringify(data));
-        // Redirigir al menú principal
-        router.push("/menuPrincipal");
+        // Desarrollo con Next server: usar apiFetch wrapper
+        // import here to avoid bundlers altering the top-level for electron contexts
+        const { default: apiFetch } = await import('../lib/api');
+        const resp = await apiFetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario, password }),
+        });
+        if (!resp.ok) {
+          setError(resp.error || 'Error de autenticación');
+        } else {
+          setError(null);
+          window.localStorage.setItem('jabemUser', JSON.stringify(resp.data));
+          router.push('/menuPrincipal');
+        }
       }
     } catch (err) {
       setError("Error de red o servidor");
