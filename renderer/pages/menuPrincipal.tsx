@@ -18,7 +18,7 @@ const opciones = [
     { key: "reportes", label: "Reportes", icon: BarChart, path: "/reportes", roles: ["admin"] },
     { key: "usuarios", label: "Usuarios", icon: Users, path: "/usuarios", roles: ["admin"] },
    // { key: "cortes", label: "Cortes", icon: BookOpenCheck, path: "/cortes", roles: ["admin", "vendedor"] },
-     { key: "configuracion", label: "Configuración", icon: Bolt, path: "/config", roles: ["admin", "vendedor"] },
+     { key: "configuracion", label: "Configuración", icon: Bolt, path: "/config", roles: ["admin"] },
 ];
 
 

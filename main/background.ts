@@ -273,62 +273,109 @@ ipcMain.handle(
             return { ok: false, error: 'Datos incompletos' };
           }
 
+          // 1) Cargar todas las presentaciones involucradas en una sola consulta
+          const presentacionIds = Array.from(new Set(items.map((it: any) => Number(it.presentacion_id))));
+          const presentaciones = await prisma.presentaciones_producto.findMany({ where: { id: { in: presentacionIds } }, include: { producto: true } });
+          const presMap: Record<number, any> = {};
+          presentaciones.forEach((p: any) => (presMap[p.id] = p));
+
+          // Verificar que todas las presentaciones existan
+          for (const pid of presentacionIds) {
+            if (!presMap[pid]) return { ok: false, error: `Presentación ${pid} no encontrada` };
+          }
+
+          // 2) Calcular demanda agregada por producto en unidades base
+          const demandaPorProducto: Record<number, number> = {};
           let subtotal = 0;
           const detalleData: any[] = [];
 
           for (const item of items) {
-            const presentacion = await prisma.presentaciones_producto.findUnique({ where: { id: Number(item.presentacion_id) }, include: { producto: true } });
-            if (!presentacion) return { ok: false, error: `Presentación ${item.presentacion_id} no encontrada` };
-            const itemSubtotal = Number(presentacion.precio_unitario) * Number(item.cantidad);
+            const pid = Number(item.presentacion_id);
+            const pres = presMap[pid];
+            const cantidadPresentacion = Number(item.cantidad) || 0;
+            const factorBase = Number(pres.factor_a_base) || 1;
+            const cantidadBase = factorBase * cantidadPresentacion;
+
+            // acumular demanda por producto
+            demandaPorProducto[pres.producto_id] = (demandaPorProducto[pres.producto_id] || 0) + cantidadBase;
+
+            const itemSubtotal = Number(pres.precio_unitario) * cantidadPresentacion;
             subtotal += itemSubtotal;
+
             detalleData.push({
-              producto_id: presentacion.producto_id,
-              presentacion_id: Number(item.presentacion_id),
-              cantidad_presentacion: Number(item.cantidad),
-              precio_unitario: presentacion.precio_unitario,
+              producto_id: pres.producto_id,
+              presentacion_id: pid,
+              cantidad_presentacion: cantidadPresentacion,
+              precio_unitario: Number(pres.precio_unitario),
               subtotal: itemSubtotal,
             });
           }
 
+          // 3) Consultar stocks actuales de los productos afectados
+          const productIds = Object.keys(demandaPorProducto).map((s) => Number(s));
+          const productos = await prisma.productos.findMany({ where: { id: { in: productIds } } });
+          const prodMap: Record<number, any> = {};
+          productos.forEach((p: any) => (prodMap[p.id] = p));
+
+          // 4) Detectar insuficiencias
+          const insuficientes: Array<{ producto_id: number; nombre: string; disponible: number; requerido: number }> = [];
+          for (const prodId of productIds) {
+            const disponible = Number(prodMap[prodId]?.stock_actual || 0);
+            const requerido = Number(demandaPorProducto[prodId] || 0);
+            if (requerido > disponible) {
+              insuficientes.push({ producto_id: prodId, nombre: prodMap[prodId]?.nombre || 'Producto', disponible, requerido });
+            }
+          }
+
+          if (insuficientes.length > 0) {
+            return { ok: false, error: 'Stock insuficiente', details: insuficientes };
+          }
+
+          // 5) Todo ok: crear venta + detalle y actualizar stock + movimientos dentro de una transacción
           const descuentoPorcentajeVal = descuento_porcentaje || 0;
           const descuentoMonto = (subtotal * descuentoPorcentajeVal) / 100;
           const total = subtotal - descuentoMonto;
 
-          const venta = await prisma.ventas.create({
-            data: {
-              usuario_id: Number(usuario_id),
-              fecha: new Date(),
-              total,
-              metodo_pago,
-              detalle: { create: detalleData }
-            },
-            include: {
-              detalle: { include: { producto: true, presentacion: true } },
-              usuario: { select: { id: true, nombre: true, usuario: true } }
+          const result = await prisma.$transaction(async (tx) => {
+            const createdVenta = await tx.ventas.create({
+              data: {
+                usuario_id: Number(usuario_id),
+                fecha: new Date(),
+                total,
+                metodo_pago,
+                detalle: { create: detalleData }
+              },
+              include: {
+                detalle: { include: { producto: true, presentacion: true } },
+                usuario: { select: { id: true, nombre: true, usuario: true } }
+              }
+            });
+
+            // actualizar stock por producto (decrementando la cantidad en base)
+            for (const prodId of productIds) {
+              const requerido = Number(demandaPorProducto[prodId] || 0);
+              if (requerido === 0) continue;
+              await tx.productos.update({ where: { id: prodId }, data: { stock_actual: { decrement: requerido } } });
             }
+
+            // crear movimientos por cada detalle (por presentacion)
+            for (const d of detalleData) {
+              const pres = presMap[d.presentacion_id];
+              const cantidadBase = (Number(pres.factor_a_base) || 1) * Number(d.cantidad_presentacion || 0);
+              await tx.inventario_movimientos.create({ data: {
+                producto_id: d.producto_id,
+                presentacion_id: d.presentacion_id,
+                tipo_movimiento: 'salida',
+                cantidad_base: cantidadBase,
+                fecha: new Date(),
+                comentario: `Venta #${createdVenta.id}`
+              }});
+            }
+
+            return createdVenta;
           });
 
-          const ventaConDescuento = { ...venta, subtotal, descuento_porcentaje: descuentoPorcentajeVal, descuento_monto: descuentoMonto };
-
-          // actualizar inventario y movimientos
-          for (const item of items) {
-            const presentacion = await prisma.presentaciones_producto.findUnique({ where: { id: Number(item.presentacion_id) } });
-            const cantidadBase = Number(presentacion.factor_a_base) * Number(item.cantidad);
-
-            // actualizar stock
-            await prisma.productos.update({ where: { id: presentacion.producto_id }, data: { stock_actual: { decrement: cantidadBase } } });
-
-            // crear movimiento
-            await prisma.inventario_movimientos.create({ data: {
-              producto_id: presentacion.producto_id,
-              presentacion_id: Number(item.presentacion_id),
-              tipo_movimiento: 'salida',
-              cantidad_base: cantidadBase,
-              fecha: new Date(),
-              comentario: `Venta #${venta.id}`
-            }});
-          }
-
+          const ventaConDescuento = { ...result, subtotal, descuento_porcentaje: descuentoPorcentajeVal, descuento_monto: descuentoMonto };
           return ok(ventaConDescuento);
         } catch (err) {
           console.error('Error creating sale IPC:', err);
