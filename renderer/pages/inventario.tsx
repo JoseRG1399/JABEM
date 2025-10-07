@@ -11,6 +11,7 @@ export default function InventarioPage() {
   const [movimientos, setMovimientos] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [pagina, setPagina] = useState(1);
+  const [soloCriticos, setSoloCriticos] = useState(false);
   const ITEMS_POR_PAGINA = 20;
 
   async function fetchProductos() {
@@ -112,9 +113,13 @@ export default function InventarioPage() {
   useEffect(() => { fetchProductos(); fetchMovimientos(); }, []);
 
   // filtrado y paginado en cliente
-  const productosFiltrados = productos.filter(p => !busqueda || (p.nombre || '').toLowerCase().includes(busqueda.toLowerCase()));
+  const productosFiltrados = productos
+    .filter(p => !busqueda || (p.nombre || '').toLowerCase().includes(busqueda.toLowerCase()))
+    .filter(p => !soloCriticos || (Number(p.stock_actual || 0) <= Number(p.stock_minimo || 0)));
   const totalPaginas = Math.max(1, Math.ceil(productosFiltrados.length / ITEMS_POR_PAGINA));
   const productosPagina = productosFiltrados.slice((pagina - 1) * ITEMS_POR_PAGINA, pagina * ITEMS_POR_PAGINA);
+
+  const criticosCount = productos.filter(p => Number(p.stock_actual || 0) <= Number(p.stock_minimo || 0)).length;
 
   function abrirAjuste(producto: any, tipo: 'entrada' | 'salida' | 'ajuste') {
     Swal.fire({
@@ -165,6 +170,17 @@ export default function InventarioPage() {
             <button onClick={() => imprimirArqueo()} className="px-3 py-2 rounded bg-[#0F1724] text-white">Imprimir</button>
           </div>
 
+          {/* Banner de productos críticos */}
+          {criticosCount > 0 && (
+            <div className="mb-4 p-3 rounded-lg bg-[#FFEBEE] border border-[#FFCDD2] flex items-center justify-between">
+              <div className="text-sm text-[#D32F2F] font-semibold">⚠️ Productos en stock crítico: {criticosCount}</div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setSoloCriticos(s => !s)} className="px-3 py-1 rounded bg-red-100 text-red-800">{soloCriticos ? 'Ver todos' : 'Ver críticos'}</button>
+                <button onClick={() => { setSoloCriticos(false); fetchProductos(); }} className="px-3 py-1 rounded bg-gray-100">Refrescar</button>
+              </div>
+            </div>
+          )}
+
           {loading ? <div>Cargando productos...</div> : (
             <table className="min-w-full">
               <thead className="bg-[#F2F0EB]"><tr>
@@ -173,19 +189,22 @@ export default function InventarioPage() {
                 <th className="px-3 py-2 text-center">Unidad</th>
                 <th className="px-3 py-2 text-center">Acciones</th></tr></thead>
               <tbody>
-                {productosPagina.map(p => (
-                  <tr key={p.id} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-2">{p.nombre}</td>
-                    <td className="px-3 py-2">{formatNumber(p.stock_actual ?? 0)}</td>
-                    <td className="px-3 py-2">{p.unidad_base}</td>
-                    <td className="px-3 py-2 flex gap-2">
-                      <button onClick={() => abrirAjuste(p, 'entrada')} className="px-2 py-1 rounded bg-green-100 text-green-800 flex items-center gap-1"><ArrowUpCircle className="w-4 h-4"/> Entrada</button>
-                      <button onClick={() => abrirAjuste(p, 'salida')} className="px-2 py-1 rounded bg-red-100 text-red-800 flex items-center gap-1"><ArrowDownCircle className="w-4 h-4"/> Salida</button>
-                      <button onClick={() => abrirAjuste(p, 'ajuste')} className="px-2 py-1 rounded bg-gray-100 text-gray-800">Ajuste</button>
-                      <button onClick={() => verMovimientosProducto(p.id)} className="px-2 py-1 rounded bg-blue-100 text-blue-800">Ver movimientos</button>
-                    </td>
-                  </tr>
-                ))}
+                {productosPagina.map(p => {
+                  const esCritico = Number(p.stock_actual || 0) <= Number(p.stock_minimo || 0);
+                  return (
+                    <tr key={p.id} className={`${esCritico ? 'bg-red-50 border-red-200' : ''} border-b hover:bg-gray-50`}>
+                      <td className={`px-3 py-2 ${esCritico ? 'text-[#D32F2F] font-semibold' : ''}`}>{p.nombre}</td>
+                      <td className={`px-3 py-2 ${esCritico ? 'text-[#D32F2F] font-semibold' : ''}`}>{formatNumber(p.stock_actual ?? 0)}</td>
+                      <td className={`px-3 py-2 ${esCritico ? 'text-[#D32F2F] font-semibold' : ''}`}>{p.unidad_base}</td>
+                      <td className="px-3 py-2 flex gap-2">
+                        <button onClick={() => abrirAjuste(p, 'entrada')} className="px-2 py-1 rounded bg-green-100 text-green-800 flex items-center gap-1"><ArrowUpCircle className="w-4 h-4"/> Entrada</button>
+                        <button onClick={() => abrirAjuste(p, 'salida')} className="px-2 py-1 rounded bg-red-100 text-red-800 flex items-center gap-1"><ArrowDownCircle className="w-4 h-4"/> Salida</button>
+                        <button onClick={() => abrirAjuste(p, 'ajuste')} className="px-2 py-1 rounded bg-gray-100 text-gray-800">Ajuste</button>
+                        <button onClick={() => verMovimientosProducto(p.id)} className="px-2 py-1 rounded bg-blue-100 text-blue-800">Ver movimientos</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

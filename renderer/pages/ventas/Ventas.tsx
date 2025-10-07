@@ -49,6 +49,8 @@ export default function Ventas() {
   // Estados principales
   const [productsList, setProductsList] = useState<Producto[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  // Mapa de advertencias de stock por producto: { [productoId]: { disponible, requerido } }
+  const [stockWarnings, setStockWarnings] = useState<Record<number, { disponible: number; requerido: number }>>({});
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState(0);
   const [lastSale, setLastSale] = useState<any>(null);
   const [isTicketOpen, setIsTicketOpen] = useState(false);
@@ -381,7 +383,8 @@ export default function Ventas() {
   };
 
   const removeFromCart = (index: number) => {
-    setCart(cart.filter((_, i) => i !== index));
+    const newCart = cart.filter((_, i) => i !== index);
+    setCart(newCart);
   };
 
   const updateQuantity = (index: number, delta: number) => {
@@ -418,6 +421,48 @@ export default function Ventas() {
     
     setCart(newCart);
   };
+
+  // Recalcula advertencias de stock a partir del carrito y la lista de productos
+  const recomputeStockWarnings = (currentCart: CartItem[]) => {
+    const demandaPorProducto: Record<number, number> = {};
+
+    for (const item of currentCart) {
+      const prodId = item.producto.id;
+      const pres = item.presentacion as any;
+      const factorBase = Number(pres?.factor_a_base) || 1;
+      let cantidadBase = 0;
+      if (item.esVentaPorPeso) {
+        // cantidad already in kg / base units
+        cantidadBase = Number(item.cantidad) || 0;
+      } else {
+        cantidadBase = (Number(item.cantidad) || 0) * factorBase;
+      }
+      demandaPorProducto[prodId] = (demandaPorProducto[prodId] || 0) + cantidadBase;
+    }
+
+    const warnings: Record<number, { disponible: number; requerido: number }> = {};
+    for (const prodIdStr of Object.keys(demandaPorProducto)) {
+      const prodId = Number(prodIdStr);
+      const prod = productsList.find((p) => p.id === prodId);
+      const disponible = prod ? Number(prod.stock_actual || 0) : 0;
+      const requerido = demandaPorProducto[prodId] || 0;
+      if (requerido > disponible) {
+        warnings[prodId] = { disponible, requerido };
+      }
+    }
+
+    return warnings;
+  };
+
+  const formatQty = (n: number) => {
+    if (Number.isInteger(n)) return String(n);
+    return Number(n).toFixed(3).replace(/\.000$/, '');
+  };
+
+  // Recalcular advertencias cuando cambian el productos o el carrito
+  useEffect(() => {
+    setStockWarnings(recomputeStockWarnings(cart));
+  }, [cart, productsList]);
 
   const calculateSubtotal = () => {
     return cart.reduce((sum, item) => sum + item.subtotal, 0);
@@ -862,7 +907,7 @@ export default function Ventas() {
             cart.map((item, index) => (
               <div
                 key={index}
-                className="border-2 border-gray-200 rounded-xl p-4 space-y-3 bg-white hover:shadow-md transition-shadow"
+                className={`${stockWarnings[item.producto.id] ? 'border-red-400 bg-red-50 hover:shadow-md' : 'border-gray-200 bg-white hover:shadow-md'} border-2 rounded-xl p-4 space-y-3 transition-shadow`}
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
@@ -917,6 +962,12 @@ export default function Ventas() {
                     {formatCurrency(item.subtotal)}
                   </span>
                 </div>
+                {/* Mostrar advertencia de stock si existe para este producto */}
+                {stockWarnings[item.producto.id] && (
+                  <div className="mt-2 p-2 bg-[#ffe2e2] border border-[#f5c2c7] rounded-md text-[#9b2226] text-sm font-semibold">
+                    Stock insuficiente: disponible {formatQty(stockWarnings[item.producto.id].disponible)}, requerido {formatQty(stockWarnings[item.producto.id].requerido)}
+                  </div>
+                )}
               </div>
             ))
           )}
