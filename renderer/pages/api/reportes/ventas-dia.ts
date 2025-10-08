@@ -18,15 +18,23 @@ export default async function handler(req, res) {
     });
 
     // Agrupar por producto
-    const agrupado: Record<string, { productoId: number; nombre: string; cantidad: number; total: number }> = {};
+    const agrupado: Record<string, { productoId: number; nombre: string; cantidad: number; total: number; costo: number; margen: number }> = {};
     detalles.forEach(d => {
       const pid = d.producto_id;
       const key = String(pid);
       const cantidad = Number(d.cantidad_presentacion || 0);
       const total = Number(d.subtotal || 0);
-      if (!agrupado[key]) agrupado[key] = { productoId: pid, nombre: d.producto?.nombre || 'Producto', cantidad: 0, total: 0 };
+      const factor = Number(d.presentacion?.factor_a_base || 1);
+      const cantidadBase = cantidad * factor;
+  const costoUnitario = Number((d.producto as any)?.precio_compra || 0);
+      const costoTotal = cantidadBase * costoUnitario;
+      const margen = total - costoTotal;
+
+      if (!agrupado[key]) agrupado[key] = { productoId: pid, nombre: d.producto?.nombre || 'Producto', cantidad: 0, total: 0, costo: 0, margen: 0 };
       agrupado[key].cantidad += cantidad;
       agrupado[key].total += total;
+      agrupado[key].costo += costoTotal;
+      agrupado[key].margen += margen;
     });
 
     const rows = Object.values(agrupado);

@@ -20,6 +20,8 @@ type Fila = {
   nombre: string;
   cantidad: number;
   total: number;
+  costo?: number;
+  margen?: number;
 };
 
 type ResDia = { filas: Fila[] };
@@ -88,6 +90,16 @@ export default function ReportesPage() {
 
   const totalIngreso = useMemo(
     () => filasOrdenadas.reduce((s, f) => s + Number(f.total || 0), 0),
+    [filasOrdenadas]
+  );
+
+  const totalCosto = useMemo(
+    () => filasOrdenadas.reduce((s, f) => s + Number(f.costo || 0), 0),
+    [filasOrdenadas]
+  );
+
+  const totalMargen = useMemo(
+    () => filasOrdenadas.reduce((s, f) => s + Number(f.margen || 0), 0),
     [filasOrdenadas]
   );
 
@@ -219,7 +231,9 @@ export default function ReportesPage() {
   const empLinea2 = empresa?.direccion ? `<div style="font-size:11px;margin-top:4px">${escapeHtml(empresa.direccion)}</div>` : '';
   const titleReport = 'Reporte de Ventas del Día';
   const empContacto = empresa?.telefono ? `<div style="font-size:11px;margin-top:2px">Tel: ${escapeHtml(empresa.telefono)}</div>` : '';
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title><style>@page{size:80mm auto;margin:5mm}body{font-family:monospace;font-size:12px;width:80mm;padding:6mm;margin:0} .center{text-align:center} .divider{border-top:1px dashed #000;margin:6px 0}</style></head><body><div class="center" style="font-weight:700;font-size:14px">${softwareName}</div>${storeNameHtml}${empLinea2}${empContacto} ${titleReport}<div class="center" style="font-size:11px;margin-top:6px">Fecha y hora: ${fechaStr}</div><div class="divider"></div>${htmlRows}<div class="divider"></div><div style="display:flex;justify-content:space-between;padding-top:6px;font-size:13px;font-weight:700"><div>Total</div><div style="min-width:80px;text-align:right">${totalGeneral}</div></div></body></html>`;
+  const totalMargenStr = formatCurrency(totalMargen);
+  const headerRow = `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;line-height:1.1;font-weight:700"><div style="flex:1">Producto</div><div style="min-width:60px;text-align:right">Cant.</div><div style="min-width:80px;text-align:right;margin-left:8px">Total</div></div><div class="divider"></div>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title><style>@page{size:80mm auto;margin:5mm}body{font-family:monospace;font-size:12px;width:80mm;padding:6mm;margin:0} .center{text-align:center} .divider{border-top:1px dashed #000;margin:6px 0}</style></head><body><div class="center" style="font-weight:700;font-size:14px">${softwareName}</div>${storeNameHtml}${empLinea2}${empContacto} ${titleReport}<div class="center" style="font-size:11px;margin-top:6px">Fecha y hora: ${fechaStr}</div><div class="divider"></div>${headerRow}${htmlRows}<div class="divider"></div><div style="display:flex;justify-content:space-between;padding-top:6px;font-size:13px;font-weight:700"><div>Total</div><div style="min-width:80px;text-align:right">${totalGeneral}</div></div><div style="display:flex;justify-content:space-between;padding-top:4px;font-size:12px;font-weight:700"><div>Total margen</div><div style="min-width:80px;text-align:right">${totalMargenStr}</div></div></body></html>`;
 
       const w = window.open('', '_blank', 'toolbar=0,location=0,menubar=0');
       if (!w) {
@@ -282,7 +296,7 @@ export default function ReportesPage() {
         </div>
 
   {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
           <div className="p-4 rounded-lg bg-[#F2F0EB]">
             <div className="text-sm text-gray-500">Ingreso del día</div>
             <div className="text-xl font-semibold">{formatCurrency(totalIngreso)}</div>
@@ -292,14 +306,12 @@ export default function ReportesPage() {
             <div className="text-xl font-semibold">{formatNumber(totalUnidades)}</div>
           </div>
           <div className="p-4 rounded-lg bg-[#F2F0EB]">
-            <div className="text-sm text-gray-500">Productos distintos</div>
-            <div className="text-xl font-semibold">{productosDistintos}</div>
+            <div className="text-sm text-gray-500">Inversión (costo)</div>
+            <div className="text-xl font-semibold">{formatCurrency(totalCosto)}</div>
           </div>
           <div className="p-4 rounded-lg bg-[#F2F0EB]">
-            <div className="text-sm text-gray-500">Top producto</div>
-            <div className="text-xl font-semibold truncate" title={topProducto}>
-              {topProducto}
-            </div>
+            <div className="text-sm text-gray-500">Margen total</div>
+            <div className="text-xl font-semibold">{formatCurrency(totalMargen)}</div>
           </div>
         </div>
 
@@ -322,6 +334,8 @@ export default function ReportesPage() {
                       <th className="px-3 py-2 text-left">Producto</th>
                       <th className="px-3 py-2 text-right">Cantidad</th>
                       <th className="px-3 py-2 text-right">Total</th>
+                      <th className="px-3 py-2 text-right">Costo</th>
+                      <th className="px-3 py-2 text-right">Margen</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -334,6 +348,8 @@ export default function ReportesPage() {
                             <td className="px-3 py-2">{f.nombre}</td>
                             <td className="px-3 py-2 text-right">{formatNumber(f.cantidad ?? 0)}</td>
                             <td className="px-3 py-2 text-right">{formatCurrency(Number(f.total || 0))}</td>
+                            <td className="px-3 py-2 text-right">{formatCurrency(Number(f.costo || 0))}</td>
+                            <td className="px-3 py-2 text-right">{formatCurrency(Number(f.margen || 0))}</td>
                           </tr>
                         ));
                       })()

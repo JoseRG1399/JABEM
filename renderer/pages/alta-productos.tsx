@@ -6,7 +6,7 @@ import Swal from "sweetalert2";
 import { PlusCircle, Trash2 } from "lucide-react";
 
 export default function AltaProductosPage() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<any>({
     nombre: "",
     descripcion: "",
     categoria_id: "",
@@ -14,6 +14,7 @@ export default function AltaProductosPage() {
     stock_actual: "0",
     stock_minimo: "0",
     codigo_barras: "",
+    precio_compra: "0.00",
   });
 
   const [loading, setLoading] = useState(false);
@@ -149,7 +150,9 @@ export default function AltaProductosPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await apiFetch('/api/productRegister/productos-alta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      const endpoint = form.id ? '/api/productRegister/productos-editar' : '/api/productRegister/productos-alta';
+      const method = form.id ? 'PUT' : 'POST';
+      const res = await apiFetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       if (!res.ok) throw new Error(res.error || 'Error al registrar producto');
 
       await Swal.fire({
@@ -168,6 +171,7 @@ export default function AltaProductosPage() {
         stock_actual: "0",
         stock_minimo: "0",
         codigo_barras: "",
+        precio_compra: "0.00",
       });
       fetchProductos(busqueda);
 
@@ -178,6 +182,22 @@ export default function AltaProductosPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Llenar formulario para editar
+  function editarProducto(prod: any) {
+    setForm({
+      id: prod.id,
+      nombre: prod.nombre || '',
+      descripcion: prod.descripcion || '',
+      categoria_id: String(prod.categoria_id || ''),
+      unidad_base: prod.unidad_base || 'kg',
+      stock_actual: String(prod.stock_actual || '0'),
+      stock_minimo: String(prod.stock_minimo || '0'),
+      codigo_barras: prod.codigo_barras || '',
+      precio_compra: String(prod.precio_compra ?? prod.precioCompra ?? '0.00'),
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // === Crear categoría (Pages Router: /api/alta-productos/categorias-alta) ===
@@ -400,6 +420,22 @@ export default function AltaProductosPage() {
                 className="w-full rounded-xl border px-3 py-2 text-black bg-white mb-2"
               />
 
+              <label className="block text-sm font-medium text-[#038C65] mb-1" htmlFor="precio_compra">
+                Precio de compra <button type="button" onClick={() => showFieldHelp('precio')} className="ml-2 text-sm bg-[#0EA5A5] text-white px-2 py-0.5 rounded">?</button>
+              </label>
+              <input
+                id="precio_compra"
+                name="precio_compra"
+                type="number"
+                step="0.01"
+                value={form.precio_compra}
+                onChange={handleInput}
+                placeholder="Precio al que se compra"
+                min="0"
+                required
+                className="w-full rounded-xl border px-3 py-2 text-black bg-white mb-2"
+              />
+
               <label
                 className="block text-sm font-medium text-[#038C65] mb-1"
                 htmlFor="codigo_barras"
@@ -422,7 +458,7 @@ export default function AltaProductosPage() {
                   disabled={loading}
                   className="rounded-xl bg-[#038C65] text-white font-semibold px-5 py-2 shadow hover:bg-[#027857] disabled:opacity-60"
                 >
-                  {loading ? "Guardando..." : "Registrar producto"}
+                  {loading ? "Guardando..." : (form.id ? 'Guardar cambios' : 'Registrar producto')}
                 </button>
               </div>
 
@@ -488,6 +524,15 @@ export default function AltaProductosPage() {
                             title="Agregar presentaciones"
                           >
                             <PlusCircle className="h-5 w-5 text-white" />
+                          </button>
+
+                          {/* Botón editar */}
+                          <button
+                            className="bg-blue-500 p-2 rounded hover:bg-blue-600"
+                            onClick={() => editarProducto(prod)}
+                            title="Editar producto"
+                          >
+                            ✏️
                           </button>
 
                           {/* Botón eliminar */}

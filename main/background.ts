@@ -9,6 +9,64 @@ import bcrypt from "bcryptjs";
 
 const isProd = process.env.NODE_ENV === "production";
 
+// Forward main-process console output to renderer windows for easier debugging
+// The renderer can subscribe via: window.ipc.on('main-log', (payload) => console.log('main-log', payload))
+(() => {
+  try {
+    const origConsole = {
+      log: console.log.bind(console),
+      error: console.error.bind(console),
+      warn: console.warn.bind(console),
+      debug: (console as any).debug ? (console as any).debug.bind(console) : console.log.bind(console),
+      info: (console as any).info ? (console as any).info.bind(console) : console.log.bind(console),
+    };
+
+    const safeSerialize = (v: any) => {
+      try {
+        if (typeof v === 'bigint') return v.toString();
+        if (v instanceof Error) return { message: v.message, stack: v.stack };
+        // Prisma Decimal and other objects often break structured clone; try toJSON / toString
+        if (v && typeof v === 'object') {
+          if (typeof (v as any).toJSON === 'function') return (v as any).toJSON();
+          if (typeof (v as any).toString === 'function' && !(v instanceof Array)) {
+            // Avoid calling toString on arrays of objects
+            const s = (v as any).toString();
+            // If toString returns [object Object], fallback to JSON stringify
+            if (s && !/^\[object/.test(s)) return s;
+          }
+        }
+        return JSON.parse(JSON.stringify(v, (_k, val) => {
+          if (typeof val === 'bigint') return val.toString();
+          if (val && typeof (val as any).toJSON === 'function') return (val as any).toJSON();
+          return val;
+        }));
+      } catch (e) {
+        try { return String(v); } catch (e2) { return '[unserializable]'; }
+      }
+    };
+
+    ['log','error','warn','debug','info'].forEach((level) => {
+      (console as any)[level] = (...args: any[]) => {
+        try { (origConsole as any)[level](...args); } catch (e) { /* ignore */ }
+        try {
+          const payload = args.map(a => safeSerialize(a));
+          const windows = BrowserWindow.getAllWindows();
+          for (const w of windows) {
+            if (w && w.webContents && !w.isDestroyed()) {
+              try { w.webContents.send('main-log', { level, args: payload }); } catch (e) { /* ignore send errors */ }
+            }
+          }
+        } catch (e) {
+          /* ignore forwarding errors */
+        }
+      };
+    });
+  } catch (e) {
+    // If anything fails here, don't block startup
+    console.warn('Could not install main->renderer console forwarder', e);
+  }
+})();
+
 // En producción, sirve la carpeta "app"
 if (isProd) {
   serve({ directory: "app" });
@@ -21,7 +79,13 @@ ipcMain.handle(
     req: { path: string; method: string; body?: any; headers?: Record<string, string> }
   ) => {
     try {
-      const prisma = getPrisma();
+      let prisma: any = null;
+      try {
+        prisma = getPrisma();
+      } catch (e) {
+        console.error('getPrisma() failed inside api:call handler:', e);
+        return { ok: false, error: 'DB not initialized: ' + ((e && (e as any).message) || String(e)) };
+      }
       const rawPath = (req.path || "").toString();
       const reqPath = rawPath.toLowerCase();
       const method = (req.method || "GET").toUpperCase();
@@ -136,18 +200,56 @@ ipcMain.handle(
         if (!nombre || !descripcion || !categoria_id || !unidad_base) {
           return { ok: false, error: "Campos requeridos faltantes" };
         }
+        // Allow precio_compra to be passed from the renderer
+        const precio_compra_raw = (body && (body.precio_compra ?? body.precioCompra)) ?? 0;
+        const precio_compra_value = Number(precio_compra_raw) || 0;
         const prod = await prisma.productos.create({
           data: {
             nombre,
             descripcion,
             categoria_id: Number(categoria_id),
             unidad_base,
-            stock_actual: new PrismaLib.Decimal(stock_actual || 0),
-            stock_minimo: new PrismaLib.Decimal(stock_minimo || 0),
+            stock_actual: PrismaLib && PrismaLib.Decimal ? new PrismaLib.Decimal(stock_actual || 0) : Number(stock_actual || 0),
+            stock_minimo: PrismaLib && PrismaLib.Decimal ? new PrismaLib.Decimal(stock_minimo || 0) : Number(stock_minimo || 0),
+            // precio_compra stored as Decimal in DB
+            precio_compra: PrismaLib && PrismaLib.Decimal ? new PrismaLib.Decimal(precio_compra_value) : precio_compra_value,
             codigo_barras: codigo_barras || null,
           },
         });
   return ok({ id: prod.id });
+      }
+
+      if (reqPath === "/api/productregister/productos-editar" && method === "PUT") {
+        const {
+          id,
+          nombre,
+          descripcion,
+          categoria_id,
+          unidad_base,
+          stock_actual,
+          stock_minimo,
+          codigo_barras,
+        } = body || {};
+        if (!id) return { ok: false, error: 'ID requerido' };
+        try {
+          const data: any = {};
+          if (nombre !== undefined) data.nombre = nombre;
+          if (descripcion !== undefined) data.descripcion = descripcion;
+          if (categoria_id !== undefined) data.categoria_id = Number(categoria_id);
+          if (unidad_base !== undefined) data.unidad_base = unidad_base;
+          if (stock_actual !== undefined) data.stock_actual = PrismaLib && PrismaLib.Decimal ? new PrismaLib.Decimal(stock_actual || 0) : Number(stock_actual || 0);
+          if (stock_minimo !== undefined) data.stock_minimo = PrismaLib && PrismaLib.Decimal ? new PrismaLib.Decimal(stock_minimo || 0) : Number(stock_minimo || 0);
+          if (codigo_barras !== undefined) data.codigo_barras = codigo_barras || null;
+          if ((body && (body.precio_compra ?? body.precioCompra)) !== undefined) {
+            const precioVal = Number((body.precio_compra ?? body.precioCompra) || 0);
+            data.precio_compra = PrismaLib && PrismaLib.Decimal ? new PrismaLib.Decimal(precioVal) : precioVal;
+          }
+          const updated = await prisma.productos.update({ where: { id: Number(id) }, data });
+          return ok({ id: updated.id });
+        } catch (e: any) {
+          console.error('Error updating product (api:call):', e);
+          return { ok: false, error: e?.message || 'Error actualizando producto' };
+        }
       }
 
       if (reqPath === "/api/productregister/productos-eliminar" && method === "DELETE") {
@@ -260,8 +362,22 @@ ipcMain.handle(
           });
           return ok(productos);
         } catch (err) {
-          console.error('Error fetching sales productos:', err);
-          return { ok: false, error: 'Error al obtener productos para ventas' };
+          // Enhanced diagnostics: log DB path, basic connectivity probe and full stack
+          try { console.error('Error fetching sales productos:', err); } catch (e) { /* ignore */ }
+          try { console.error('DB path (main):', dbPath); } catch (e) { /* ignore */ }
+
+          // Try a lightweight probe to see if the DB is reachable
+          try {
+            const probe = await prisma.$queryRaw`SELECT 1 as ok`;
+            console.debug('DB probe result:', probe);
+          } catch (probeErr) {
+            console.error('DB probe failed:', probeErr);
+          }
+
+          const message = (err && (err as any).message) ? (err as any).message : 'Error al obtener productos para ventas';
+          const stack = (err && (err as any).stack) ? (err as any).stack : undefined;
+          if (stack) console.error('Stack:', stack);
+          return { ok: false, error: message };
         }
       }
 
@@ -452,15 +568,28 @@ ipcMain.handle(
             include: { producto: true, presentacion: true, venta: true },
           });
 
-          const agrupado: Record<string, { productoId: number; nombre: string; cantidad: number; total: number }> = {};
+          const agrupado: Record<string, { productoId: number; nombre: string; cantidad: number; total: number; costo: number; margen: number }> = {};
           detalles.forEach((d: any) => {
-            const pid = d.producto_id;
-            const key = String(pid);
-            const cantidad = Number(d.cantidad_presentacion || 0);
-            const total = Number(d.subtotal || 0);
-            if (!agrupado[key]) agrupado[key] = { productoId: pid, nombre: d.producto?.nombre || 'Producto', cantidad: 0, total: 0 };
-            agrupado[key].cantidad += cantidad;
-            agrupado[key].total += total;
+            try {
+              const pid = d.producto_id;
+              const key = String(pid);
+              const cantidadPresentacion = Number(d.cantidad_presentacion || 0);
+              const subtotal = Number(d.subtotal || 0);
+
+              // compute cantidad en base y costo usando presentacion.factor_a_base y producto.precio_compra
+              const factorBase = Number(d.presentacion?.factor_a_base ?? 1);
+              const cantidadBase = factorBase * cantidadPresentacion;
+              const precioCompra = Number(((d.producto as any)?.precio_compra) ?? 0);
+              const costoDetalle = cantidadBase * precioCompra;
+
+              if (!agrupado[key]) agrupado[key] = { productoId: pid, nombre: d.producto?.nombre || 'Producto', cantidad: 0, total: 0, costo: 0, margen: 0 };
+              agrupado[key].cantidad += cantidadPresentacion;
+              agrupado[key].total += subtotal;
+              agrupado[key].costo += costoDetalle;
+              agrupado[key].margen = agrupado[key].total - agrupado[key].costo;
+            } catch (e) {
+              console.error('Error procesando detalle_venta (ventas-dia) id=', (d && d.id) || null, e);
+            }
           });
 
           const rows = Object.values(agrupado);
@@ -497,28 +626,42 @@ ipcMain.handle(
 
           const detalles = await prisma.detalle_venta.findMany({
             where: { venta: { fecha: { gte: startDate, lt: endExclusive } } },
-            include: { producto: true, venta: true },
+            include: { producto: true, venta: true, presentacion: true },
           });
 
           const byDayMap: Record<string, { fecha: string; cantidad: number; total: number }> = {};
-          const byProductMap: Record<string, { productoId: number; nombre: string; cantidad: number; total: number }> = {};
+          const byProductMap: Record<string, { productoId: number; nombre: string; cantidad: number; total: number; costo: number; margen: number }> = {};
 
           for (const d of detalles) {
-            const vf = new Date(d.venta.fecha);
-            const key = `${vf.getFullYear()}-${String(vf.getMonth() + 1).padStart(2,'0')}-${String(vf.getDate()).padStart(2,'0')}`;
-            const cantidad = Number(d.cantidad_presentacion ?? 0);
-            const total = Number(d.subtotal ?? d.venta?.total ?? 0);
+            try {
+              const ventaFechaRaw = d.venta?.fecha ?? null;
+              const vf = ventaFechaRaw ? new Date(ventaFechaRaw) : new Date();
+              const key = `${vf.getFullYear()}-${String(vf.getMonth() + 1).padStart(2,'0')}-${String(vf.getDate()).padStart(2,'0')}`;
+              const cantidadPresentacion = Number(d.cantidad_presentacion ?? 0);
+              const totalDetalle = Number(d.subtotal ?? d.venta?.total ?? 0);
 
-            if (!byDayMap[key]) byDayMap[key] = { fecha: key, cantidad: 0, total: 0 };
-            byDayMap[key].cantidad += cantidad;
-            byDayMap[key].total += total;
+              if (!byDayMap[key]) byDayMap[key] = { fecha: key, cantidad: 0, total: 0 };
+              byDayMap[key].cantidad += cantidadPresentacion;
+              byDayMap[key].total += totalDetalle;
 
-            const pid = d.producto_id ?? d.producto?.id;
-            const nombre = d.producto?.nombre ?? 'Producto';
-            const pkey = String(pid ?? nombre);
-            if (!byProductMap[pkey]) byProductMap[pkey] = { productoId: pid ?? 0, nombre, cantidad: 0, total: 0 };
-            byProductMap[pkey].cantidad += cantidad;
-            byProductMap[pkey].total += total;
+              const pid = d.producto_id ?? d.producto?.id;
+              const nombre = d.producto?.nombre ?? 'Producto';
+              const pkey = String(pid ?? nombre);
+              if (!byProductMap[pkey]) byProductMap[pkey] = { productoId: pid ?? 0, nombre, cantidad: 0, total: 0, costo: 0, margen: 0 };
+
+              // compute cost for this detalle using presentacion.factor_a_base and producto.precio_compra
+              const factorBase = Number(d.presentacion?.factor_a_base ?? 1);
+              const cantidadBase = factorBase * cantidadPresentacion;
+              const precioCompra = Number(((d.producto as any)?.precio_compra) ?? 0);
+              const costoDetalle = cantidadBase * precioCompra;
+
+              byProductMap[pkey].cantidad += cantidadPresentacion;
+              byProductMap[pkey].total += totalDetalle;
+              byProductMap[pkey].costo += costoDetalle;
+              byProductMap[pkey].margen = byProductMap[pkey].total - byProductMap[pkey].costo;
+            } catch (e) {
+              console.error('Error procesando detalle_venta (ventas-historico) id=', (d && d.id) || null, e);
+            }
           }
 
           const result = {
@@ -755,6 +898,29 @@ function getPrisma(): PrismaClientType {
   }
 
   console.log("📦 Ruta activa de base de datos:", dbPath);
+
+  // Asegurar compatibilidad de esquema en runtime: si la DB existe pero falta
+  // la columna `precio_compra` añadimos la columna vía SQL para evitar fallos
+  // en versiones antiguas del DB que no tengan la nueva columna.
+  try {
+    const prismaRuntime = getPrisma();
+    try {
+      // PRAGMA devuelve filas con { cid, name, type, notnull, dflt_value, pk }
+      const cols: any[] = await prismaRuntime.$queryRaw`PRAGMA table_info('Productos')` as any[];
+      const hasPrecio = Array.isArray(cols) && cols.some((c: any) => String(c.name).toLowerCase() === 'precio_compra');
+      if (!hasPrecio) {
+        console.log('🔧 Columna precio_compra no encontrada en Productos. Agregando columna...');
+        // ALTER TABLE para añadir columna con valor por defecto 0.
+        await prismaRuntime.$executeRawUnsafe("ALTER TABLE Productos ADD COLUMN precio_compra NUMERIC DEFAULT 0");
+        console.log('✅ Columna precio_compra añadida correctamente.');
+      }
+    } catch (schemaErr) {
+      console.error('Error comprobando/actualizando esquema en runtime:', schemaErr);
+    }
+  } catch (e) {
+    // Si getPrisma falla, lo registramos pero no bloqueamos el inicio
+    console.error('No se pudo inicializar Prisma para comprobación de esquema:', e);
+  }
 
   // Ventana principal
   const mainWindow: BrowserWindow = createWindow("main", {

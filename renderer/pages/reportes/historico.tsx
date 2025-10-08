@@ -9,7 +9,7 @@ import Swal from 'sweetalert2';
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 type ByDay = { fecha: string; cantidad: number; total: number };
-type ByProduct = { productoId?: number; nombre: string; cantidad: number; total: number };
+type ByProduct = { productoId?: number; nombre: string; cantidad: number; total: number; costo?: number; margen?: number };
 
 export default function HistoricoPage() {
   const [start, setStart] = useState('');
@@ -158,15 +158,17 @@ export default function HistoricoPage() {
   // KPIs
   const totalUnidades = data.byProduct.reduce((s, p) => s + (p.cantidad || 0), 0);
   const totalIngreso = data.byProduct.reduce((s, p) => s + (p.total || 0), 0);
+  const totalCosto = data.byProduct.reduce((s, p) => s + (p.costo || 0), 0);
+  const totalMargen = data.byProduct.reduce((s, p) => s + (p.margen || 0), 0);
   const numDias = data.byDay.length || 1;
   const ingresoPromedioDia = totalIngreso / numDias;
 
   // Exportación CSV
   function exportCSV() {
     const rows = [
-      ['Tipo','Fecha/Producto','Cantidad','Total'],
-      ...data.byDay.map(d => ['DIA', d.fecha, String(d.cantidad), String(d.total)]),
-      ...data.byProduct.map(p => ['PRODUCTO', p.nombre, String(p.cantidad), String(p.total)])
+      ['Tipo','Fecha/Producto','Cantidad','Total','Costo','Margen'],
+      ...data.byDay.map(d => ['DIA', d.fecha, String(d.cantidad), String(d.total), '', '']),
+      ...data.byProduct.map(p => ['PRODUCTO', p.nombre, String(p.cantidad), String(p.total), String(p.costo || 0), String(p.margen || 0)])
     ];
     const csv = rows.map(r => r.map(x => `"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -228,6 +230,10 @@ export default function HistoricoPage() {
             <div className="text-sm text-gray-500">Promedio/día</div>
             <div className="text-xl font-semibold">{formatCurrency(ingresoPromedioDia)}</div>
           </div>
+          <div className="p-4 rounded-lg bg-[#F2F0EB]">
+            <div className="text-sm text-gray-500">Margen total</div>
+            <div className="text-xl font-semibold">{formatCurrency(totalMargen)}</div>
+          </div>
         </div>
 
         {loading ? <div>Cargando...</div> : (
@@ -248,6 +254,8 @@ export default function HistoricoPage() {
                       <th className="px-3 py-2 text-left">Producto</th>
                       <th className="px-3 py-2 text-right">Cantidad</th>
                       <th className="px-3 py-2 text-right">Total</th>
+                      <th className="px-3 py-2 text-right">Costo</th>
+                      <th className="px-3 py-2 text-right">Margen</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -266,6 +274,8 @@ export default function HistoricoPage() {
                                 <td className="px-3 py-2">{p.nombre}</td>
                                 <td className="px-3 py-2 text-right">{formatNumber(p.cantidad ?? 0)}</td>
                                 <td className="px-3 py-2 text-right">{formatCurrency(Number(p.total || 0))}</td>
+                                <td className="px-3 py-2 text-right">{formatCurrency(Number(p.costo || 0))}</td>
+                                <td className="px-3 py-2 text-right">{formatCurrency(Number(p.margen || 0))}</td>
                               </tr>
                             ))}
                             {/* Pagination controls */}

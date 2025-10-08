@@ -66,6 +66,7 @@ model Productos {
     unidad_base   Unidad // Unidad base, ej: kg
     stock_actual  Decimal @default(0)
     stock_minimo  Decimal @default(0)
+    precio_compra Decimal @default(0) // precio al que se compra al proveedor
     codigo_barras String? @unique
 
     categoria      Categorias                @relation(fields: [categoria_id], references: [id], onDelete: Restrict, onUpdate: Cascade)

@@ -30,17 +30,13 @@ export default async function handler(req, res) {
 
     // ⚠️ Ajusta nombres de modelo/campos a tu schema real:
     const detalles = await prisma.detalle_venta.findMany({
-      where: {
-        venta: {
-          fecha: { gte: startDate, lt: endExclusive }
-        }
-      },
-      include: { producto: true, venta: true }
+      where: { venta: { fecha: { gte: startDate, lt: endExclusive } } },
+      include: { producto: true, venta: true, presentacion: true },
     });
 
     // Agrupar por día (local)
     const byDayMap: Record<string, { fecha: string; cantidad: number; total: number }> = {};
-    const byProductMap: Record<string, { productoId: number; nombre: string; cantidad: number; total: number }> = {};
+  const byProductMap: Record<string, { productoId: number; nombre: string; cantidad: number; total: number; costo: number; margen: number }> = {};
 
     for (const d of detalles) {
       const vf = new Date(d.venta.fecha);
@@ -57,9 +53,17 @@ export default async function handler(req, res) {
       const nombre = d.producto?.nombre ?? 'Producto';
       const pkey = String(pid ?? nombre);
 
-      if (!byProductMap[pkey]) byProductMap[pkey] = { productoId: pid ?? 0, nombre, cantidad: 0, total: 0 };
-      byProductMap[pkey].cantidad += cantidad;
-      byProductMap[pkey].total += total;
+    const factor = Number(d.presentacion?.factor_a_base || 1);
+    const cantidadBase = cantidad * factor;
+    const costoUnitario = Number((d.producto as any)?.precio_compra || 0);
+    const costoTotal = cantidadBase * costoUnitario;
+    const margen = total - costoTotal;
+
+    if (!byProductMap[pkey]) byProductMap[pkey] = { productoId: pid ?? 0, nombre, cantidad: 0, total: 0, costo: 0, margen: 0 };
+    byProductMap[pkey].cantidad += cantidad;
+    byProductMap[pkey].total += total;
+    byProductMap[pkey].costo += costoTotal;
+    byProductMap[pkey].margen += margen;
     }
 
     res.status(200).json({
