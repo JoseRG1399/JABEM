@@ -48,6 +48,7 @@ async function handleCreateSale(req: NextApiRequest, res: NextApiResponse) {
         presentacion_id: item.presentacion_id,
         cantidad_presentacion: item.cantidad,
         precio_unitario: presentacion.precio_unitario,
+        precio_compra: presentacion.producto?.precio_compra ?? 0,
         subtotal: itemSubtotal,
       });
     }
@@ -62,6 +63,9 @@ async function handleCreateSale(req: NextApiRequest, res: NextApiResponse) {
       data: {
         usuario_id,
         fecha: new Date(),
+        subtotal,
+        descuento_porcentaje: descuentoPorcentajeVal,
+        descuento_monto: descuentoMonto,
         total,
         metodo_pago,
         detalle: {

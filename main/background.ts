@@ -79,6 +79,14 @@ ipcMain.handle(
     req: { path: string; method: string; body?: any; headers?: Record<string, string> }
   ) => {
     try {
+      // Wait for DB bootstrap (migrations + seeder) to complete in startup
+      try {
+        if (typeof (global as any).__dbReadyPromise === 'object' && (global as any).__dbReadyPromise) {
+          await (global as any).__dbReadyPromise;
+        }
+      } catch (e) {
+        // ignore waiting errors and continue to try to use Prisma; we'll return helpful errors below if DB missing
+      }
       let prisma: any = null;
       try {
         prisma = getPrisma();
@@ -423,6 +431,8 @@ ipcMain.handle(
               presentacion_id: pid,
               cantidad_presentacion: cantidadPresentacion,
               precio_unitario: Number(pres.precio_unitario),
+              // store precio_compra at time of sale so historical reports remain accurate
+              precio_compra: Number((pres.producto && (pres.producto.precio_compra ?? pres.producto.precioCompra)) || 0),
               subtotal: itemSubtotal,
             });
           }
@@ -457,6 +467,9 @@ ipcMain.handle(
               data: {
                 usuario_id: Number(usuario_id),
                 fecha: new Date(),
+                subtotal,
+                descuento_porcentaje: descuentoPorcentajeVal,
+                descuento_monto: descuentoMonto,
                 total,
                 metodo_pago,
                 detalle: { create: detalleData }
@@ -563,37 +576,111 @@ ipcMain.handle(
           const todayEnd = new Date();
           todayEnd.setHours(23, 59, 59, 999);
 
-          const detalles = await prisma.detalle_venta.findMany({
-            where: { venta: { fecha: { gte: todayStart, lte: todayEnd } } },
-            include: { producto: true, presentacion: true, venta: true },
+          // Obtener ventas del día con sus detalles
+          const ventas = await prisma.ventas.findMany({
+            where: { fecha: { gte: todayStart, lte: todayEnd } },
+            include: { 
+              detalle: { 
+                include: { producto: true, presentacion: true } 
+              } 
+            },
           });
 
-          const agrupado: Record<string, { productoId: number; nombre: string; cantidad: number; total: number; costo: number; margen: number }> = {};
-          detalles.forEach((d: any) => {
-            try {
-              const pid = d.producto_id;
-              const key = String(pid);
-              const cantidadPresentacion = Number(d.cantidad_presentacion || 0);
-              const subtotal = Number(d.subtotal || 0);
+          // Agregar información de descuentos por producto
+          const agrupado: Record<string, { 
+            productoId: number; 
+            nombre: string; 
+            cantidad: number; 
+            precioVenta: number; // precio antes de descuento
+            descuentoPorcentaje: number; // descuento promedio ponderado
+            precioFinal: number; // precio después de descuento
+            costo: number; 
+            ganancia: number;
+            margenPorcentaje: number;
+          }> = {};
 
-              // compute cantidad en base y costo usando presentacion.factor_a_base y producto.precio_compra
-              const factorBase = Number(d.presentacion?.factor_a_base ?? 1);
-              const cantidadBase = factorBase * cantidadPresentacion;
-              const precioCompra = Number(((d.producto as any)?.precio_compra) ?? 0);
-              const costoDetalle = cantidadBase * precioCompra;
+          let totalSinDescuento = 0;
+          let totalConDescuento = 0;
 
-              if (!agrupado[key]) agrupado[key] = { productoId: pid, nombre: d.producto?.nombre || 'Producto', cantidad: 0, total: 0, costo: 0, margen: 0 };
-              agrupado[key].cantidad += cantidadPresentacion;
-              agrupado[key].total += subtotal;
-              agrupado[key].costo += costoDetalle;
-              agrupado[key].margen = agrupado[key].total - agrupado[key].costo;
-            } catch (e) {
-              console.error('Error procesando detalle_venta (ventas-dia) id=', (d && d.id) || null, e);
+          ventas.forEach((venta: any) => {
+            const ventaSubtotal = Number(venta.subtotal || 0);
+            const ventaDescuentoPct = Number(venta.descuento_porcentaje || 0);
+            const ventaTotal = Number(venta.total || 0);
+
+            totalSinDescuento += ventaSubtotal;
+            totalConDescuento += ventaTotal;
+
+            venta.detalle.forEach((d: any) => {
+              try {
+                const pid = d.producto_id;
+                const key = String(pid);
+                const cantidadPresentacion = Number(d.cantidad_presentacion || 0);
+                const subtotalDetalle = Number(d.subtotal || 0);
+                
+                // Calcular el precio de venta unitario antes de descuento
+                const precioVentaUnitario = cantidadPresentacion > 0 ? subtotalDetalle / cantidadPresentacion : 0;
+                
+                // Calcular descuento aplicado a este detalle (proporcional)
+                const descuentoDetalle = ventaDescuentoPct > 0 ? (subtotalDetalle * ventaDescuentoPct) / 100 : 0;
+                const totalFinalDetalle = subtotalDetalle - descuentoDetalle;
+                const precioFinalUnitario = cantidadPresentacion > 0 ? totalFinalDetalle / cantidadPresentacion : 0;
+
+                // Costo
+                const factorBase = Number(d.presentacion?.factor_a_base ?? 1);
+                const cantidadBase = factorBase * cantidadPresentacion;
+                const precioCompra = Number((d.precio_compra ?? (d.producto as any)?.precio_compra) ?? 0);
+                const costoTotal = cantidadBase * precioCompra;
+
+                if (!agrupado[key]) {
+                  agrupado[key] = { 
+                    productoId: pid, 
+                    nombre: d.producto?.nombre || 'Producto', 
+                    cantidad: 0, 
+                    precioVenta: 0,
+                    descuentoPorcentaje: 0,
+                    precioFinal: 0,
+                    costo: 0, 
+                    ganancia: 0,
+                    margenPorcentaje: 0
+                  };
+                }
+
+                const item = agrupado[key];
+                
+                // Promedios ponderados
+                const nuevaCantidad = item.cantidad + cantidadPresentacion;
+                item.precioVenta = ((item.precioVenta * item.cantidad) + (precioVentaUnitario * cantidadPresentacion)) / nuevaCantidad;
+                item.precioFinal = ((item.precioFinal * item.cantidad) + (precioFinalUnitario * cantidadPresentacion)) / nuevaCantidad;
+                item.cantidad = nuevaCantidad;
+                item.costo += costoTotal;
+                
+                // Calcular descuento promedio ponderado
+                if (item.precioVenta > 0) {
+                  item.descuentoPorcentaje = ((item.precioVenta - item.precioFinal) / item.precioVenta) * 100;
+                }
+                
+                item.ganancia = (item.precioFinal * item.cantidad) - item.costo;
+                item.margenPorcentaje = item.precioFinal > 0 ? (item.ganancia / (item.precioFinal * item.cantidad)) * 100 : 0;
+              } catch (e) {
+                console.error('Error procesando detalle_venta (ventas-dia) id=', (d && d.id) || null, e);
+              }
+            });
+          });
+
+          const filas = Object.values(agrupado);
+          const diferenciaDinero = totalSinDescuento - totalConDescuento;
+          const perdidaMargenPorcentaje = totalSinDescuento > 0 ? (diferenciaDinero / totalSinDescuento) * 100 : 0;
+
+          return ok({ 
+            fecha: new Date(), 
+            filas,
+            resumenDescuentos: {
+              totalSinDescuento,
+              totalConDescuento,
+              diferenciaDinero,
+              perdidaMargenPorcentaje
             }
           });
-
-          const rows = Object.values(agrupado);
-          return ok({ fecha: new Date(), filas: rows });
         } catch (err) {
           console.error('Error en ventas-dia:', err);
           return { ok: false, error: 'Error al obtener reporte de ventas del día' };
@@ -613,9 +700,6 @@ ipcMain.handle(
             const [y, m, d] = dStr.split('-').map(Number);
             return new Date(y, (m - 1), d, 0, 0, 0, 0);
           };
-          const endOfDayLocal = (date: Date) => {
-            return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-          };
           const nextDayLocal = (date: Date) => {
             return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1, 0, 0, 0, 0);
           };
@@ -624,51 +708,125 @@ ipcMain.handle(
           const endDate = parseLocalDate(end);
           const endExclusive = nextDayLocal(endDate);
 
-          const detalles = await prisma.detalle_venta.findMany({
-            where: { venta: { fecha: { gte: startDate, lt: endExclusive } } },
-            include: { producto: true, venta: true, presentacion: true },
+          // Obtener ventas del período con sus detalles
+          const ventas = await prisma.ventas.findMany({
+            where: { fecha: { gte: startDate, lt: endExclusive } },
+            include: { 
+              detalle: { 
+                include: { producto: true, presentacion: true } 
+              } 
+            },
           });
 
-          const byDayMap: Record<string, { fecha: string; cantidad: number; total: number }> = {};
-          const byProductMap: Record<string, { productoId: number; nombre: string; cantidad: number; total: number; costo: number; margen: number }> = {};
+          const byDayMap: Record<string, { fecha: string; cantidad: number; totalSinDescuento: number; totalConDescuento: number }> = {};
+          const byProductMap: Record<string, { 
+            productoId: number; 
+            nombre: string; 
+            cantidad: number; 
+            precioVenta: number;
+            descuentoPorcentaje: number;
+            precioFinal: number;
+            costo: number; 
+            ganancia: number;
+            margenPorcentaje: number;
+          }> = {};
 
-          for (const d of detalles) {
+          let totalSinDescuento = 0;
+          let totalConDescuento = 0;
+
+          for (const venta of ventas) {
             try {
-              const ventaFechaRaw = d.venta?.fecha ?? null;
-              const vf = ventaFechaRaw ? new Date(ventaFechaRaw) : new Date();
-              const key = `${vf.getFullYear()}-${String(vf.getMonth() + 1).padStart(2,'0')}-${String(vf.getDate()).padStart(2,'0')}`;
-              const cantidadPresentacion = Number(d.cantidad_presentacion ?? 0);
-              const totalDetalle = Number(d.subtotal ?? d.venta?.total ?? 0);
+              const ventaSubtotal = Number(venta.subtotal || 0);
+              const ventaDescuentoPct = Number(venta.descuento_porcentaje || 0);
+              const ventaTotal = Number(venta.total || 0);
 
-              if (!byDayMap[key]) byDayMap[key] = { fecha: key, cantidad: 0, total: 0 };
-              byDayMap[key].cantidad += cantidadPresentacion;
-              byDayMap[key].total += totalDetalle;
+              totalSinDescuento += ventaSubtotal;
+              totalConDescuento += ventaTotal;
 
-              const pid = d.producto_id ?? d.producto?.id;
-              const nombre = d.producto?.nombre ?? 'Producto';
-              const pkey = String(pid ?? nombre);
-              if (!byProductMap[pkey]) byProductMap[pkey] = { productoId: pid ?? 0, nombre, cantidad: 0, total: 0, costo: 0, margen: 0 };
+              // Agrupar por día
+              const vf = new Date(venta.fecha);
+              const dayKey = `${vf.getFullYear()}-${String(vf.getMonth() + 1).padStart(2,'0')}-${String(vf.getDate()).padStart(2,'0')}`;
+              if (!byDayMap[dayKey]) {
+                byDayMap[dayKey] = { fecha: dayKey, cantidad: 0, totalSinDescuento: 0, totalConDescuento: 0 };
+              }
 
-              // compute cost for this detalle using presentacion.factor_a_base and producto.precio_compra
-              const factorBase = Number(d.presentacion?.factor_a_base ?? 1);
-              const cantidadBase = factorBase * cantidadPresentacion;
-              const precioCompra = Number(((d.producto as any)?.precio_compra) ?? 0);
-              const costoDetalle = cantidadBase * precioCompra;
+              venta.detalle.forEach((d: any) => {
+                const cantidadPresentacion = Number(d.cantidad_presentacion || 0);
+                const subtotalDetalle = Number(d.subtotal || 0);
+                
+                byDayMap[dayKey].cantidad += cantidadPresentacion;
+                byDayMap[dayKey].totalSinDescuento += subtotalDetalle;
+                byDayMap[dayKey].totalConDescuento += subtotalDetalle * (1 - ventaDescuentoPct / 100);
 
-              byProductMap[pkey].cantidad += cantidadPresentacion;
-              byProductMap[pkey].total += totalDetalle;
-              byProductMap[pkey].costo += costoDetalle;
-              byProductMap[pkey].margen = byProductMap[pkey].total - byProductMap[pkey].costo;
+                // Agrupar por producto
+                const pid = d.producto_id;
+                const nombre = d.producto?.nombre || 'Producto';
+                const pkey = String(pid);
+
+                if (!byProductMap[pkey]) {
+                  byProductMap[pkey] = { 
+                    productoId: pid, 
+                    nombre, 
+                    cantidad: 0, 
+                    precioVenta: 0,
+                    descuentoPorcentaje: 0,
+                    precioFinal: 0,
+                    costo: 0, 
+                    ganancia: 0,
+                    margenPorcentaje: 0
+                  };
+                }
+
+                const item = byProductMap[pkey];
+                
+                // Calcular precios
+                const precioVentaUnitario = cantidadPresentacion > 0 ? subtotalDetalle / cantidadPresentacion : 0;
+                const descuentoDetalle = ventaDescuentoPct > 0 ? (subtotalDetalle * ventaDescuentoPct) / 100 : 0;
+                const totalFinalDetalle = subtotalDetalle - descuentoDetalle;
+                const precioFinalUnitario = cantidadPresentacion > 0 ? totalFinalDetalle / cantidadPresentacion : 0;
+
+                // Costo
+                const factorBase = Number(d.presentacion?.factor_a_base ?? 1);
+                const cantidadBase = factorBase * cantidadPresentacion;
+                const precioCompra = Number((d.precio_compra ?? (d.producto as any)?.precio_compra) ?? 0);
+                const costoTotal = cantidadBase * precioCompra;
+
+                // Promedios ponderados
+                const nuevaCantidad = item.cantidad + cantidadPresentacion;
+                if (nuevaCantidad > 0) {
+                  item.precioVenta = ((item.precioVenta * item.cantidad) + (precioVentaUnitario * cantidadPresentacion)) / nuevaCantidad;
+                  item.precioFinal = ((item.precioFinal * item.cantidad) + (precioFinalUnitario * cantidadPresentacion)) / nuevaCantidad;
+                }
+                item.cantidad = nuevaCantidad;
+                item.costo += costoTotal;
+                
+                // Calcular descuento promedio ponderado
+                if (item.precioVenta > 0) {
+                  item.descuentoPorcentaje = ((item.precioVenta - item.precioFinal) / item.precioVenta) * 100;
+                }
+                
+                item.ganancia = (item.precioFinal * item.cantidad) - item.costo;
+                item.margenPorcentaje = item.precioFinal > 0 ? (item.ganancia / (item.precioFinal * item.cantidad)) * 100 : 0;
+              });
             } catch (e) {
-              console.error('Error procesando detalle_venta (ventas-historico) id=', (d && d.id) || null, e);
+              console.error('Error procesando venta (ventas-historico) id=', (venta && venta.id) || null, e);
             }
           }
 
+          const diferenciaDinero = totalSinDescuento - totalConDescuento;
+          const perdidaMargenPorcentaje = totalSinDescuento > 0 ? (diferenciaDinero / totalSinDescuento) * 100 : 0;
+
           const result = {
             start: startDate.toISOString(),
-            end: endOfDayLocal(endDate).toISOString(),
+            end: new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999).toISOString(),
             byDay: Object.values(byDayMap).sort((a,b)=>a.fecha.localeCompare(b.fecha)),
-            byProduct: Object.values(byProductMap).sort((a,b)=>b.total - a.total),
+            byProduct: Object.values(byProductMap).sort((a,b)=>(b.precioFinal * b.cantidad) - (a.precioFinal * a.cantidad)),
+            resumenDescuentos: {
+              totalSinDescuento,
+              totalConDescuento,
+              diferenciaDinero,
+              perdidaMargenPorcentaje
+            }
           };
           return ok(result);
         } catch (err) {
@@ -866,6 +1024,12 @@ function getPrisma(): PrismaClientType {
 (async () => {
   await app.whenReady();
 
+  // Install a global promise that resolves when DB bootstrap (copy seed, migrations, seeder, inline seed) completes.
+  // This allows early IPC handlers to await DB readiness and avoid querying missing tables during startup.
+  let _resolveDbReady: () => void;
+  let _rejectDbReady: (err: any) => void;
+  (global as any).__dbReadyPromise = new Promise<void>((resolve, reject) => { _resolveDbReady = resolve; _rejectDbReady = reject; });
+
   // Carpeta persistente del usuario
   const userDataPath = app.getPath("userData");
   const dbFolder = path.join(userDataPath, "db");
@@ -884,16 +1048,168 @@ function getPrisma(): PrismaClientType {
     : path.join(__dirname, "../db/jabem.dev.db");
 
   // Primera ejecución: copiar semilla si no existe la DB del usuario
+  // Helper: try to apply SQL migration files (if present) to the target DB using Prisma
+  async function applyMigrationSqlFilesIfPresent(targetDbPath: string) {
+    try {
+      const migrationsFolders = [] as string[];
+      // In production we expect migrations bundled under resourcesPath/migrations
+      const prodMigrationsPath = path.join(process.resourcesPath, 'migrations');
+      if (fs.existsSync(prodMigrationsPath)) migrationsFolders.push(prodMigrationsPath);
+      // In development use the repo migrations folder
+      const devMigrationsPath = path.join(__dirname, '..', 'db', 'migrations');
+      if (fs.existsSync(devMigrationsPath)) migrationsFolders.push(devMigrationsPath);
+
+      if (migrationsFolders.length === 0) return;
+
+      // Use a lightweight runtime Prisma client pointed at the target DB to execute SQL files
+      process.env.DATABASE_URL = `file:${targetDbPath.replace(/\\/g, '/')}`;
+      const runtimeRequire = (eval('require') as NodeRequire);
+      let runtime: typeof import('@prisma/client');
+      try {
+        runtime = runtimeRequire('@prisma/client');
+      } catch (err) {
+        // If runtime client not available, skip migrations (will fallback to schema fixes)
+        console.warn('Prisma client not available to run SQL migrations at startup, skipping automatic SQL migration runner.');
+        return;
+      }
+      const tmpPrisma = new runtime.PrismaClient();
+
+      for (const folder of migrationsFolders) {
+        try {
+          const files = fs.readdirSync(folder).filter(f => f.endsWith('.sql')).sort();
+          for (const f of files) {
+            const sql = fs.readFileSync(path.join(folder, f), 'utf8');
+            if (!sql || !sql.trim()) continue;
+            console.log('🔁 Applying migration SQL file:', path.join(folder, f));
+            try {
+              // Execute the SQL in a single statement; SQLite supports multiple statements in a call
+              await tmpPrisma.$executeRawUnsafe(sql);
+            } catch (e) {
+              console.error('Error applying migration file', f, e);
+            }
+          }
+        } catch (e) {
+          console.error('Error reading migration folder', folder, e);
+        }
+      }
+
+      await tmpPrisma.$disconnect();
+    } catch (e) {
+      console.error('applyMigrationSqlFilesIfPresent error:', e);
+    }
+  }
+
+  // Helper: run the JS/TS seeder script (idempotent) if present. This will attempt to require the project's seed file
+  async function runSeederIfPresent(targetDbPath: string) {
+    try {
+      // Ensure Prisma client will connect to the target DB when seeder runs
+      process.env.DATABASE_URL = `file:${targetDbPath.replace(/\\/g, '/')}`;
+      const seederPathProd = path.join(process.resourcesPath, 'db-seed', 'seed.js');
+      const seederPathDev = path.join(__dirname, '..', 'db', 'seed.js');
+      let seederToRun: string | null = null;
+      if (fs.existsSync(seederPathProd)) seederToRun = seederPathProd;
+      else if (fs.existsSync(seederPathDev)) seederToRun = seederPathDev;
+
+      if (!seederToRun) return;
+
+      console.log('🧪 Running seeder:', seederToRun);
+      try {
+        // Use a child process to run the seeder to avoid TypeScript/ESM loader issues
+        // Use eval('require') to avoid bundlers statically resolving child_process
+        const runtimeRequireLocal = (eval('require') as NodeRequire);
+        const spawn = runtimeRequireLocal('child_process').spawnSync;
+        const nodeExe = process.execPath;
+        const res = spawn(nodeExe, [seederToRun], { stdio: 'inherit' });
+        if (res.error) console.error('Seeder execution error:', res.error);
+        else if (res.status !== 0) console.warn('Seeder exited with non-zero status:', res.status);
+      } catch (e) {
+        console.error('Error executing seeder:', e);
+      }
+    } catch (e) {
+      console.error('runSeederIfPresent error:', e);
+    }
+  }
+
+  // Helper: ensure minimal seed data exists (idempotent) so ventas can run
+  async function ensureSeedDataIfEmpty(targetDbPath: string) {
+    try {
+      process.env.DATABASE_URL = `file:${targetDbPath.replace(/\\/g, '/')}`;
+      const runtimeRequireLocal = (eval('require') as NodeRequire);
+      let runtime: typeof import('@prisma/client');
+      try {
+        runtime = runtimeRequireLocal('@prisma/client');
+      } catch (e) {
+        // If no prisma client available, skip - the runtime ALTER fallbacks remain
+        console.warn('Prisma client not available for inline seeding at startup. Skipping inline seeder.');
+        return;
+      }
+      const tmpPrisma = new runtime.PrismaClient();
+
+      try {
+        const confCount = await tmpPrisma.configuracion.count();
+        if (confCount === 0) {
+          console.log('🌱 Seed: creando configuración por defecto');
+          await tmpPrisma.configuracion.create({ data: { nombre_empresa: 'Mi Tienda', logo: '', direccion: '', telefono: '', rfc: '', moneda: 'MXN' } });
+        }
+
+        const categoriasCount = await tmpPrisma.categorias.count();
+        let categoriaId = undefined as number | undefined;
+        if (categoriasCount === 0) {
+          const cat = await tmpPrisma.categorias.create({ data: { nombre: 'General', descripcion: 'Categoría por defecto' } });
+          categoriaId = cat.id;
+          console.log('🌱 Seed: categoria creada', cat.id);
+        } else {
+          const existCat = await tmpPrisma.categorias.findFirst();
+          categoriaId = existCat ? existCat.id : undefined;
+        }
+
+        const productosCount = await tmpPrisma.productos.count();
+        if (productosCount === 0) {
+          console.log('🌱 Seed: creando producto de ejemplo con presentacion');
+          const prod = await tmpPrisma.productos.create({ data: {
+            nombre: 'Producto de ejemplo', descripcion: 'Producto generado automáticamente', categoria_id: Number(categoriaId || 1), unidad_base: 'pieza', stock_actual: 100, stock_minimo: 0, precio_compra: 0, codigo_barras: null
+          }});
+          await tmpPrisma.presentaciones_producto.create({ data: {
+            producto_id: prod.id, nombre: 'Unidad', unidad: 'pieza', factor_a_base: 1, precio_unitario: 1, codigo_barras: null, activo: true, es_default: true
+          }});
+        }
+
+        const usuariosCount = await tmpPrisma.usuarios.count();
+        if (usuariosCount === 0) {
+          console.log('🌱 Seed: creando usuario admin por defecto');
+          const pwHash = await bcrypt.hash('admin', 10);
+          await tmpPrisma.usuarios.create({ data: { nombre: 'Administrador', usuario: 'admin', password_hash: pwHash, rol: 'admin', activo: true } });
+        }
+      } catch (e) {
+        console.error('Error running inline seed operations:', e);
+      } finally {
+        await tmpPrisma.$disconnect();
+      }
+    } catch (e) {
+      console.error('ensureSeedDataIfEmpty error:', e);
+    }
+  }
+
+  // Primera ejecución: copiar semilla si no existe la DB del usuario
   if (!fs.existsSync(dbPath)) {
     try {
       if (fs.existsSync(seedDbPath)) {
+        // Copy seed DB first
         fs.copyFileSync(seedDbPath, dbPath);
-        console.log("✅ Base de datos inicial copiada a:", dbPath);
+        console.log('✅ Base de datos inicial copiada a:', dbPath);
+
+        // After copying the seed DB, attempt to apply any bundled migration SQL files
+        await applyMigrationSqlFilesIfPresent(dbPath);
+
+  // After migrations, attempt to run JS seeder (if present) to ensure data consistency
+  await runSeederIfPresent(dbPath);
+  // Also ensure minimal inline seed data exists so ventas can function on fresh installs
+  await ensureSeedDataIfEmpty(dbPath);
       } else {
-        console.warn("⚠️ Seed DB no encontrada en:", seedDbPath);
+        console.warn('⚠️ Seed DB no encontrada en:', seedDbPath);
       }
     } catch (err) {
-      console.error("❌ Error al copiar base de datos inicial:", err);
+      console.error('❌ Error al copiar base de datos inicial:', err);
     }
   }
 
@@ -914,6 +1230,18 @@ function getPrisma(): PrismaClientType {
         await prismaRuntime.$executeRawUnsafe("ALTER TABLE Productos ADD COLUMN precio_compra NUMERIC DEFAULT 0");
         console.log('✅ Columna precio_compra añadida correctamente.');
       }
+      // Also ensure Detalle_venta has precio_compra column (for historical sales cost preservation)
+      try {
+        const detalleCols: any[] = await prismaRuntime.$queryRaw`PRAGMA table_info('Detalle_venta')` as any[];
+        const hasDetallePrecio = Array.isArray(detalleCols) && detalleCols.some((c: any) => String(c.name).toLowerCase() === 'precio_compra');
+        if (!hasDetallePrecio) {
+          console.log('🔧 Columna precio_compra no encontrada en Detalle_venta. Agregando columna...');
+          await prismaRuntime.$executeRawUnsafe("ALTER TABLE Detalle_venta ADD COLUMN precio_compra NUMERIC DEFAULT 0");
+          console.log('✅ Columna precio_compra añadida en Detalle_venta correctamente.');
+        }
+      } catch (e2) {
+        console.error('Error comprobando/actualizando Detalle_venta.precio_compra:', e2);
+      }
     } catch (schemaErr) {
       console.error('Error comprobando/actualizando esquema en runtime:', schemaErr);
     }
@@ -921,6 +1249,11 @@ function getPrisma(): PrismaClientType {
     // Si getPrisma falla, lo registramos pero no bloqueamos el inicio
     console.error('No se pudo inicializar Prisma para comprobación de esquema:', e);
   }
+
+  // DB bootstrap finished (successful or not) -> resolve the global promise so handlers proceed
+  try {
+    if (typeof _resolveDbReady === 'function') _resolveDbReady();
+  } catch (e) { /* ignore */ }
 
   // Ventana principal
   const mainWindow: BrowserWindow = createWindow("main", {

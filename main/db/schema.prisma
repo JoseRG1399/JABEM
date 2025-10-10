@@ -1,144 +1,142 @@
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "sqlite"
-    url      = env("DATABASE_URL")
-}
-
-enum Rol {
-    admin
-    vendedor
-}
-
-enum Unidad {
-    kg
-    bulto
-    pieza
-}
-
-enum MetodoPago {
-    efectivo
-    tarjeta
-    transferencia
-}
-
-enum TipoMovimiento {
-    entrada
-    salida
-    ajuste
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model Usuarios {
-    id            Int     @id @default(autoincrement())
-    nombre        String
-    usuario       String  @unique
-    password_hash String
-    rol           Rol
-    activo        Boolean @default(true)
-
-    ventas Ventas[]
+  id            Int      @id @default(autoincrement())
+  nombre        String
+  usuario       String   @unique
+  password_hash String
+  rol           Rol
+  activo        Boolean  @default(true)
+  ventas        Ventas[]
 }
 
 model Configuracion {
-    id             Int     @id @default(autoincrement())
-    nombre_empresa String
-    logo           String // path local o base64
-    direccion      String
-    telefono       String
-    rfc            String? // null permitido
-    moneda         String // ej: MXN
+  id             Int     @id @default(autoincrement())
+  nombre_empresa String
+  logo           String
+  direccion      String
+  telefono       String
+  rfc            String?
+  moneda         String
 }
 
 model Categorias {
-    id          Int         @id @default(autoincrement())
-    nombre      String
-    descripcion String
-    productos   Productos[]
+  id          Int         @id @default(autoincrement())
+  nombre      String
+  descripcion String
+  productos   Productos[]
 }
 
 model Productos {
-    id            Int     @id @default(autoincrement())
-    categoria_id  Int
-    nombre        String
-    descripcion   String
-    unidad_base   Unidad // Unidad base, ej: kg
-    stock_actual  Decimal @default(0)
-    stock_minimo  Decimal @default(0)
-    precio_compra Decimal @default(0) // precio al que se compra al proveedor
-    codigo_barras String? @unique
+  id             Int                       @id @default(autoincrement())
+  categoria_id   Int
+  nombre         String
+  descripcion    String
+  unidad_base    Unidad
+  stock_actual   Decimal                   @default(0)
+  stock_minimo   Decimal                   @default(0)
+  precio_compra  Decimal                   @default(0)
+  codigo_barras  String?                   @unique
+  detalle        Detalle_venta[]
+  movimientos    Inventario_movimientos[]
+  presentaciones Presentaciones_producto[]
+  categoria      Categorias                @relation(fields: [categoria_id], references: [id])
 
-    categoria      Categorias                @relation(fields: [categoria_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
-    presentaciones Presentaciones_producto[]
-    detalle        Detalle_venta[]
-    movimientos    Inventario_movimientos[]
-
-    @@index([categoria_id])
+  @@index([categoria_id])
 }
 
 model Presentaciones_producto {
-    id              Int     @id @default(autoincrement())
-    producto_id     Int
-    nombre          String // "Bulto 20kg", "Kg suelto", "Pieza"
-    unidad          Unidad
-    factor_a_base   Decimal // cuántas unidades base equivale
-    precio_unitario Decimal
-    codigo_barras   String? @unique
-    es_default      Boolean @default(false)
-    activo          Boolean @default(true)
+  id                     Int                      @id @default(autoincrement())
+  producto_id            Int
+  nombre                 String
+  unidad                 Unidad
+  factor_a_base          Decimal
+  precio_unitario        Decimal
+  codigo_barras          String?                  @unique
+  es_default             Boolean                  @default(false)
+  activo                 Boolean                  @default(true)
+  detalle                Detalle_venta[]
+  Inventario_movimientos Inventario_movimientos[]
+  producto               Productos                @relation(fields: [producto_id], references: [id], onDelete: Cascade)
 
-    producto               Productos                @relation(fields: [producto_id], references: [id], onDelete: Cascade)
-    detalle                Detalle_venta[]
-    Inventario_movimientos Inventario_movimientos[]
-
-    @@index([producto_id])
+  @@index([producto_id])
 }
 
 model Ventas {
-    id          Int        @id @default(autoincrement())
-    usuario_id  Int
-    fecha       DateTime
-    total       Decimal
-    metodo_pago MetodoPago
+  id                   Int             @id @default(autoincrement())
+  usuario_id           Int
+  fecha                DateTime
+  subtotal             Decimal         @default(0) // Total antes del descuento
+  descuento_porcentaje Decimal         @default(0) // Porcentaje de descuento aplicado
+  descuento_monto      Decimal         @default(0) // Monto del descuento en dinero
+  total                Decimal
+  metodo_pago          MetodoPago
+  detalle              Detalle_venta[]
+  usuario              Usuarios        @relation(fields: [usuario_id], references: [id])
 
-    usuario Usuarios        @relation(fields: [usuario_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
-    detalle Detalle_venta[]
-
-    @@index([usuario_id])
-    @@index([fecha])
+  @@index([usuario_id])
+  @@index([fecha])
 }
 
 model Detalle_venta {
-    id                    Int     @id @default(autoincrement())
-    venta_id              Int
-    producto_id           Int
-    presentacion_id       Int
-    cantidad_presentacion Decimal // cantidad en la presentación
-    precio_unitario       Decimal
-    subtotal              Decimal
+  id                    Int                     @id @default(autoincrement())
+  venta_id              Int
+  producto_id           Int
+  presentacion_id       Int
+  cantidad_presentacion Decimal
+  precio_unitario       Decimal
+  precio_compra         Decimal                 @default(0)
+  subtotal              Decimal
+  presentacion          Presentaciones_producto @relation(fields: [presentacion_id], references: [id])
+  producto              Productos               @relation(fields: [producto_id], references: [id])
+  venta                 Ventas                  @relation(fields: [venta_id], references: [id], onDelete: Cascade)
 
-    venta        Ventas                  @relation(fields: [venta_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
-    producto     Productos               @relation(fields: [producto_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
-    presentacion Presentaciones_producto @relation(fields: [presentacion_id], references: [id], onDelete: Restrict)
-
-    @@index([venta_id])
-    @@index([producto_id])
-    @@index([presentacion_id])
+  @@index([venta_id])
+  @@index([producto_id])
+  @@index([presentacion_id])
 }
 
 model Inventario_movimientos {
-    id              Int            @id @default(autoincrement())
-    producto_id     Int
-    presentacion_id Int? // opcional
-    tipo_movimiento TipoMovimiento
-    cantidad_base   Decimal // siempre en unidad base
-    fecha           DateTime
-    comentario      String
+  id              Int                      @id @default(autoincrement())
+  producto_id     Int
+  presentacion_id Int?
+  tipo_movimiento TipoMovimiento
+  cantidad_base   Decimal
+  fecha           DateTime
+  comentario      String
+  presentacion    Presentaciones_producto? @relation(fields: [presentacion_id], references: [id])
+  producto        Productos                @relation(fields: [producto_id], references: [id])
 
-    producto     Productos                @relation(fields: [producto_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
-    presentacion Presentaciones_producto? @relation(fields: [presentacion_id], references: [id])
+  @@index([producto_id])
+  @@index([fecha])
+}
 
-    @@index([producto_id])
-    @@index([fecha])
+enum Rol {
+  admin
+  vendedor
+}
+
+enum Unidad {
+  kg
+  bulto
+  pieza
+}
+
+enum MetodoPago {
+  efectivo
+  tarjeta
+  transferencia
+}
+
+enum TipoMovimiento {
+  entrada
+  salida
+  ajuste
 }

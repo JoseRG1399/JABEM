@@ -278,10 +278,14 @@ async function main() {
   });
 
   if (admin) {
+    // Venta sin descuento
     await prisma.ventas.create({
       data: {
         usuario_id: admin.id,
         fecha: new Date(),
+        subtotal: 185.0,
+        descuento_porcentaje: 0,
+        descuento_monto: 0,
         total: 185.0,
         metodo_pago: MetodoPago.efectivo,
         detalle: {
@@ -291,6 +295,7 @@ async function main() {
               presentacion_id: presentacionesAlpisteFull[0].id,
               cantidad_presentacion: 2,
               precio_unitario: 35.0,
+              precio_compra: alpiste.precio_compra ?? 0,
               subtotal: 70.0,
             },
             {
@@ -298,7 +303,41 @@ async function main() {
               presentacion_id: presentacionesComederoFull[0].id,
               cantidad_presentacion: 1,
               precio_unitario: 115.0,
+              precio_compra: comedero.precio_compra ?? 0,
               subtotal: 115.0,
+            },
+          ],
+        },
+      },
+    });
+
+    // Venta con descuento del 10%
+    await prisma.ventas.create({
+      data: {
+        usuario_id: admin.id,
+        fecha: new Date(),
+        subtotal: 150.0,
+        descuento_porcentaje: 10,
+        descuento_monto: 15.0,
+        total: 135.0,
+        metodo_pago: MetodoPago.efectivo,
+        detalle: {
+          create: [
+            {
+              producto_id: alpiste.id,
+              presentacion_id: presentacionesAlpisteFull[0].id,
+              cantidad_presentacion: 3,
+              precio_unitario: 35.0,
+              precio_compra: alpiste.precio_compra ?? 0,
+              subtotal: 105.0,
+            },
+            {
+              producto_id: comedero.id,
+              presentacion_id: presentacionesComederoFull[0].id,
+              cantidad_presentacion: 1,
+              precio_unitario: 45.0,
+              precio_compra: comedero.precio_compra ?? 0,
+              subtotal: 45.0,
             },
           ],
         },
