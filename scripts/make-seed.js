@@ -26,9 +26,12 @@ function run(cmd, env = {}) {
     // Asegura generación de cliente
     run(`npx prisma generate --schema="${schemaPath}"`);
 
-    // Empuja el esquema a SQLite (sin migraciones)
-    const DATABASE_URL = `file:${seedDbPath.replace(/\\/g, '/')}`;
-    run(`npx prisma db push --schema="${schemaPath}"`, { DATABASE_URL });
+  // Aplica las migraciones existentes al archivo seed DB (genera la estructura según migrations/)
+  const DATABASE_URL = `file:${seedDbPath.replace(/\\/g, '/')}`;
+  // Genera cliente antes de migrar
+  run(`npx prisma generate --schema="${schemaPath}"`);
+  // Aplica las migraciones desde main/db/migrations al seed DB
+  run(`npx prisma migrate deploy --schema="${schemaPath}"`, { DATABASE_URL });
 
     // Ejecuta el seed apuntando a la nueva DB
     // Usa ts-node si el seed está en TypeScript

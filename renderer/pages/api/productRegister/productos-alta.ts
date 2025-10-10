@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
-  const { nombre, descripcion, categoria_id, unidad_base, stock_actual, stock_minimo, codigo_barras } = req.body;
+  const { nombre, descripcion, categoria_id, unidad_base, stock_actual, stock_minimo, codigo_barras, precio_compra } = req.body;
   if (!nombre || !descripcion || !categoria_id || !unidad_base) {
     return res.status(400).json({ error: 'Faltan campos requeridos' });
   }
@@ -19,6 +19,8 @@ export default async function handler(req, res) {
         unidad_base,
         stock_actual: Number(stock_actual) || 0,
         stock_minimo: Number(stock_minimo) || 0,
+  // @ts-ignore: field added to schema; regenerate Prisma client locally (prisma generate)
+  precio_compra: Number(precio_compra) || 0,
         codigo_barras,
       },
     });
