@@ -5,10 +5,24 @@ import apiFetch from '../lib/api';
 import Swal from 'sweetalert2';
 import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 
+type KPIsInventario = {
+  valorTotalInventario: number;
+  totalProductos: number;
+  productosCriticos: number;
+  productosSinStock: number;
+  productosConStock: number;
+  valorPromedioPorProducto: number;
+  porcentajeCriticos: number;
+  porcentajeSinStock: number;
+  productosTopValor: Array<{ nombre: string; valorInventario: number }>;
+};
+
 export default function InventarioPage() {
   const [productos, setProductos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [movimientos, setMovimientos] = useState<any[]>([]);
+  const [kpis, setKpis] = useState<KPIsInventario | null>(null);
+  const [currency, setCurrency] = useState("MXN");
   const [busqueda, setBusqueda] = useState('');
   const [pagina, setPagina] = useState(1);
   const [soloCriticos, setSoloCriticos] = useState(false);
@@ -23,6 +37,26 @@ export default function InventarioPage() {
       setProductos([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchKPIs() {
+    try {
+      const res = await apiFetch('/api/inventario/kpis');
+      if (res.ok) {
+        setKpis(res.data);
+      }
+    } catch (err) {
+      console.error('Error fetching KPIs:', err);
+    }
+  }
+
+  // Función para formatear moneda
+  function formatCurrency(amount: number) {
+    try {
+      return new Intl.NumberFormat("es-MX", { style: "currency", currency }).format(amount || 0);
+    } catch {
+      return `$${Number(amount || 0).toFixed(2)}`;
     }
   }
 
@@ -110,7 +144,23 @@ export default function InventarioPage() {
     }
   }
 
-  useEffect(() => { fetchProductos(); fetchMovimientos(); }, []);
+  useEffect(() => { 
+    fetchProductos(); 
+    fetchMovimientos(); 
+    fetchKPIs();
+  }, []);
+
+  // Obtener moneda desde configuración
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await apiFetch('/api/config/configuracion');
+        if (r.ok && r.data?.moneda) setCurrency(r.data.moneda);
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, []);
 
   // filtrado y paginado en cliente
   const productosFiltrados = productos
@@ -147,7 +197,7 @@ export default function InventarioPage() {
         });
         if (!res.ok) throw new Error(res.error || 'Error al ajustar stock');
         Swal.fire('Listo', 'Stock actualizado', 'success');
-        fetchProductos(); fetchMovimientos(producto.id);
+        fetchProductos(); fetchMovimientos(producto.id); fetchKPIs();
       } catch (err: any) {
         Swal.fire('Error', err?.message || 'No se pudo ajustar el stock', 'error');
       }
@@ -161,12 +211,117 @@ export default function InventarioPage() {
         className="mb-4 px-4 py-2 rounded-xl bg-[#038C65] text-white font-semibold shadow hover:bg-[#027857]">
         ← Volver al menú principal
       </button>
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="col-span-2 bg-white rounded-xl p-6 shadow">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* KPIs del Inventario */}
+        {kpis && (
+          <div className="bg-white rounded-xl p-6 shadow">
+            <h2 className="text-xl font-bold text-[#038C65] mb-6">Resumen del Inventario</h2>
+            
+            {/* KPIs Principales */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="p-4 rounded-lg bg-[#F2F0EB]">
+                <div className="text-sm text-gray-500 flex items-center">
+                  Valor Total del Inventario
+                  <button 
+                    onClick={() => Swal.fire('Info', 'Valor total del inventario basado en: Stock × Precio de Compra', 'info')}
+                    className="ml-1 text-xs bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center"
+                  >?</button>
+                </div>
+                <div className="text-xl font-semibold text-[#038C65]">{formatCurrency(kpis.valorTotalInventario)}</div>
+              </div>
+              
+              <div className="p-4 rounded-lg bg-[#F2F0EB]">
+                <div className="text-sm text-gray-500 flex items-center">
+                  Total de Productos
+                  <button 
+                    onClick={() => Swal.fire('Info', 'Número total de productos registrados en el sistema', 'info')}
+                    className="ml-1 text-xs bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center"
+                  >?</button>
+                </div>
+                <div className="text-xl font-semibold">{kpis.totalProductos}</div>
+              </div>
+              
+              <div className="p-4 rounded-lg bg-[#F2F0EB]">
+                <div className="text-sm text-gray-500 flex items-center">
+                  Productos Críticos
+                  <button 
+                    onClick={() => Swal.fire('Info', 'Productos con stock igual o menor al stock mínimo establecido', 'info')}
+                    className="ml-1 text-xs bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center"
+                  >?</button>
+                </div>
+                <div className="text-xl font-semibold text-red-600">{kpis.productosCriticos} ({kpis.porcentajeCriticos}%)</div>
+              </div>
+              
+              <div className="p-4 rounded-lg bg-[#F2F0EB]">
+                <div className="text-sm text-gray-500 flex items-center">
+                  Valor Promedio/Producto
+                  <button 
+                    onClick={() => Swal.fire('Info', 'Valor promedio de inventario por producto (Valor Total ÷ Total Productos)', 'info')}
+                    className="ml-1 text-xs bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center"
+                  >?</button>
+                </div>
+                <div className="text-xl font-semibold">{formatCurrency(kpis.valorPromedioPorProducto)}</div>
+              </div>
+            </div>
+
+            {/* KPIs Secundarios */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="text-sm text-blue-600 font-medium">Productos con Stock</div>
+                <div className="text-lg font-semibold text-blue-800">{kpis.productosConStock}</div>
+              </div>
+              
+              <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+                <div className="text-sm text-red-600 font-medium">Productos Sin Stock</div>
+                <div className="text-lg font-semibold text-red-800">{kpis.productosSinStock} ({kpis.porcentajeSinStock}%)</div>
+              </div>
+              
+              <div className="p-4 rounded-lg bg-green-50 border border-green-200">
+                <div className="text-sm text-green-600 font-medium">Estado General</div>
+                <div className="text-lg font-semibold text-green-800">
+                  {kpis.porcentajeCriticos < 10 ? '🟢 Excelente' : 
+                   kpis.porcentajeCriticos < 25 ? '🟡 Bueno' : '🔴 Crítico'}
+                </div>
+              </div>
+            </div>
+
+            {/* Top 5 Productos por Valor */}
+            {kpis.productosTopValor && kpis.productosTopValor.length > 0 && (
+              <div>
+                <h3 className="font-semibold mb-3 text-gray-700">Top 5 Productos por Valor de Inventario</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white border rounded-lg">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-medium text-gray-600">#</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-600">Producto</th>
+                        <th className="px-4 py-2 text-right font-medium text-gray-600">Valor en Inventario</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {kpis.productosTopValor.map((producto, index) => (
+                        <tr key={index} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-2 font-medium text-gray-500">{index + 1}</td>
+                          <td className="px-4 py-2">{producto.nombre}</td>
+                          <td className="px-4 py-2 text-right font-semibold text-[#038C65]">
+                            {formatCurrency(producto.valorInventario)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="col-span-2 bg-white rounded-xl p-6 shadow">
           <h2 className="text-xl font-bold text-[#038C65] mb-4">Productos y arqueo</h2>
           <div className="mb-4 flex items-center gap-3">
             <input value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPagina(1); }} placeholder="Buscar producto..." className="rounded border px-3 py-2 w-full" />
-            <button onClick={() => { setBusqueda(''); setPagina(1); fetchProductos(); }} className="px-3 py-2 rounded bg-gray-100">Limpiar</button>
+            <button onClick={() => { setBusqueda(''); setPagina(1); fetchProductos(); fetchKPIs(); }} className="px-3 py-2 rounded bg-gray-100">Limpiar</button>
             <button onClick={() => imprimirArqueo()} className="px-3 py-2 rounded bg-[#0F1724] text-white">Imprimir</button>
           </div>
 
@@ -176,7 +331,7 @@ export default function InventarioPage() {
               <div className="text-sm text-[#D32F2F] font-semibold">⚠️ Productos en stock crítico: {criticosCount}</div>
               <div className="flex items-center gap-2">
                 <button onClick={() => setSoloCriticos(s => !s)} className="px-3 py-1 rounded bg-red-100 text-red-800">{soloCriticos ? 'Ver todos' : 'Ver críticos'}</button>
-                <button onClick={() => { setSoloCriticos(false); fetchProductos(); }} className="px-3 py-1 rounded bg-gray-100">Refrescar</button>
+                <button onClick={() => { setSoloCriticos(false); fetchProductos(); fetchKPIs(); }} className="px-3 py-1 rounded bg-gray-100">Refrescar</button>
               </div>
             </div>
           )}
@@ -231,6 +386,7 @@ export default function InventarioPage() {
               </div>
             ))}
           </div>
+        </div>
         </div>
       </div>
     </div>

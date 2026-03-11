@@ -293,6 +293,75 @@ ipcMain.handle(
         }
       }
 
+      // INVENTARIO - KPIs del inventario ----------------------------------
+      if (reqPath === "/api/inventario/kpis" && method === "GET") {
+        try {
+          const productos = await prisma.productos.findMany({
+            select: {
+              id: true,
+              nombre: true,
+              stock_actual: true,
+              stock_minimo: true,
+              precio_compra: true
+            }
+          });
+
+          let valorTotalInventario = 0;
+          let productosCriticos = 0;
+          let productosSinStock = 0;
+          let productosConStock = 0;
+
+          productos.forEach(producto => {
+            const stock = Number(producto.stock_actual || 0);
+            const stockMinimo = Number(producto.stock_minimo || 0);
+            const precioCompra = Number(producto.precio_compra || 0);
+            
+            // Valor total del inventario
+            valorTotalInventario += stock * precioCompra;
+            
+            // Productos críticos (stock <= stock mínimo)
+            if (stock <= stockMinimo && stockMinimo > 0) {
+              productosCriticos++;
+            }
+            
+            // Productos sin stock
+            if (stock <= 0) {
+              productosSinStock++;
+            } else {
+              productosConStock++;
+            }
+          });
+
+          const totalProductos = productos.length;
+          const valorPromedioPorProducto = totalProductos > 0 ? (valorTotalInventario / totalProductos) : 0;
+          const porcentajeCriticos = totalProductos > 0 ? ((productosCriticos / totalProductos) * 100) : 0;
+          const porcentajeSinStock = totalProductos > 0 ? ((productosSinStock / totalProductos) * 100) : 0;
+
+          const kpis = {
+            valorTotalInventario: Number(valorTotalInventario.toFixed(2)),
+            totalProductos,
+            productosCriticos,
+            productosSinStock,
+            productosConStock,
+            valorPromedioPorProducto: Number(valorPromedioPorProducto.toFixed(2)),
+            porcentajeCriticos: Number(porcentajeCriticos.toFixed(1)),
+            porcentajeSinStock: Number(porcentajeSinStock.toFixed(1)),
+            productosTopValor: productos
+              .map(p => ({
+                nombre: p.nombre,
+                valorInventario: Number(p.stock_actual || 0) * Number(p.precio_compra || 0)
+              }))
+              .sort((a, b) => b.valorInventario - a.valorInventario)
+              .slice(0, 5)
+          };
+
+          return ok(kpis);
+        } catch (err) {
+          console.error('Error obtener KPIs inventario:', err);
+          return { ok: false, error: 'Error al obtener KPIs del inventario' };
+        }
+      }
+
       // INVENTARIO - movimientos listar ----------------------------------
       if (reqPath.startsWith("/api/inventario/movimientos-listar") && method === "GET") {
         try {
